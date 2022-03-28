@@ -1,0 +1,21 @@
+[package]
+name = "naga-dx"
+version = "0.1.0"
+authors = ["Noel Tautges <noelatautges@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.56"
+dxbc = { path = "../dxbc/dxbc" }
+find-winsdk = "0.2.0"
+glob = "0.3.0"
+indicatif = { version = "0.16.2", features = ["rayon"] }
+naga = "0.8.5"
+rayon = "1.5.1"
+walkdir = "2.3.2"
+
+[dev-dependencies]
+test-generator = "0.3.0"
+
+[[bin]]
+name = "generate-dxbc"
