@@ -128,6 +128,12 @@ impl NagaConsumer {
     }
 }
 
+impl Default for NagaConsumer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Consumer for NagaConsumer {
     fn initialize(&mut self) -> Action {
         Action::Continue
