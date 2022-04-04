@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use dxbc::binary::{Action, Consumer, Parser, State};
-use dxbc::dr::{Operands, *};
+use dxbc::dr::{shex::*, Operands, *};
 use naga::{
-    Binding, BuiltIn, Function, FunctionArgument, FunctionResult, Handle, Interpolation, Module,
-    ScalarKind, Span, StructMember, Type, TypeInner, VectorSize,
+    Binding, BuiltIn, Constant, ConstantInner, Expression, Function, FunctionArgument,
+    FunctionResult, Handle, Interpolation, Module, ScalarKind, ScalarValue, Span, Statement,
+    StructMember, Type, TypeInner, VectorSize,
 };
 
 enum ElementChunk {
@@ -15,13 +16,28 @@ enum ElementChunk {
 pub struct NagaConsumer {
     module: Module,
     function: Function,
+    program_ty: ProgramType,
 }
 
 impl NagaConsumer {
     fn new() -> Self {
         NagaConsumer {
             module: Module::default(),
-            function: Function::default(),
+            function: Function {
+                name: Some("main".to_string()),
+                ..Function::default()
+            },
+            program_ty: ProgramType::Vertex,
+        }
+    }
+
+    fn get_vector_size(&self, size: usize) -> VectorSize {
+        match size {
+            2 => VectorSize::Bi,
+            3 => VectorSize::Tri,
+            4 => VectorSize::Quad,
+            // TODO: figure out better solution for this
+            _ => VectorSize::Quad,
         }
     }
 
@@ -85,12 +101,7 @@ impl NagaConsumer {
                             match zeros {
                                 1 => TypeInner::Scalar { kind, width: 4 },
                                 _ => TypeInner::Vector {
-                                    size: match zeros {
-                                        2 => VectorSize::Bi,
-                                        3 => VectorSize::Tri,
-                                        4 => VectorSize::Quad,
-                                        _ => unreachable!(),
-                                    },
+                                    size: self.get_vector_size(zeros as usize),
                                     kind,
                                     width: 4,
                                 },
@@ -126,6 +137,93 @@ impl NagaConsumer {
             })
             .collect()
     }
+
+    fn get_scalar_value(&self, imm: &Immediate) -> ScalarValue {
+        match imm {
+            Immediate::U32(n) => ScalarValue::Uint(*n as u64),
+            Immediate::U64(n) => ScalarValue::Uint(*n),
+            // TODO: find out what these are
+            Immediate::Relative(_) => todo!(),
+            Immediate::U32Relative(_, _) => todo!(),
+            Immediate::U64Relative(_, _) => todo!(),
+        }
+    }
+
+    fn get_scalar_width(&self, imm: &Immediate) -> u8 {
+        match imm {
+            Immediate::U32(_) => 4,
+            Immediate::U64(_) => 8,
+            Immediate::Relative(_) => todo!(),
+            Immediate::U32Relative(_, _) => todo!(),
+            Immediate::U64Relative(_, _) => todo!(),
+        }
+    }
+
+    fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Expression {
+        match op.get_operand_type() {
+            OperandType::Immediate32 => {
+                let imms = op.get_immediates();
+                let first = imms.first().unwrap();
+                if imms.len() == 1 {
+                    let c = Constant {
+                        name: None,
+                        // TODO: find out what this is
+                        specialization: None,
+                        inner: ConstantInner::Scalar {
+                            width: self.get_scalar_width(first),
+                            value: self.get_scalar_value(first),
+                        },
+                    };
+                    let const_handle = self.module.constants.fetch_or_append(c, span);
+                    Expression::Constant(const_handle)
+                } else {
+                    let width = match first {
+                        Immediate::U32(_) => 4,
+                        Immediate::U64(_) => 8,
+                        Immediate::Relative(_) => todo!(),
+                        Immediate::U32Relative(_, _) => todo!(),
+                        Immediate::U64Relative(_, _) => todo!(),
+                    };
+                    let ty = Type {
+                        name: None,
+                        inner: TypeInner::Vector {
+                            size: self.get_vector_size(imms.len()),
+                            kind: match first {
+                                Immediate::U32(_) | Immediate::U64(_) => ScalarKind::Uint,
+                                Immediate::Relative(_) => todo!(),
+                                Immediate::U32Relative(_, _) => todo!(),
+                                Immediate::U64Relative(_, _) => todo!(),
+                            },
+                            width,
+                        },
+                    };
+                    let ty = self.module.types.insert(ty, span);
+                    let components: Vec<Handle<Constant>> = imms
+                        .into_iter()
+                        .map(|imm| {
+                            let c = Constant {
+                                name: None,
+                                specialization: None,
+                                inner: ConstantInner::Scalar {
+                                    width,
+                                    value: self.get_scalar_value(&imm),
+                                },
+                            };
+                            self.module.constants.fetch_or_append(c, span)
+                        })
+                        .collect();
+                    let c = Constant {
+                        name: None,
+                        specialization: None,
+                        inner: ConstantInner::Composite { ty, components },
+                    };
+                    let handle = self.module.constants.fetch_or_append(c, span);
+                    Expression::Constant(handle)
+                }
+            }
+            _ => todo!(),
+        }
+    }
 }
 
 impl Default for NagaConsumer {
@@ -139,7 +237,9 @@ impl Consumer for NagaConsumer {
         Action::Continue
     }
 
-    fn finalize(&mut self) -> Action {
+    fn consume_rdef(&mut self, rdef: &RdefChunk) -> Action {
+        println!("{:#?}", rdef);
+        self.program_ty = rdef.program_ty;
         Action::Continue
     }
 
@@ -177,42 +277,56 @@ impl Consumer for NagaConsumer {
         Action::Continue
     }
 
-    fn consume_instruction(&mut self, _offset: u32, instruction: SparseInstruction) -> Action {
-        //println!("{:#?}", instruction);
-        match instruction.operands {
-            Operands::DclGlobalFlags(_) => (),
-            Operands::DclInput(_) => (),
-            Operands::DclInputPs(_) => (),
-            Operands::DclOutput(_) => (),
-            Operands::DclConstantBuffer(_) => (),
-            Operands::DclResource(_) => (),
-            Operands::DclSampler(_) => (),
-            Operands::DclOutputSiv(_) => (),
-            Operands::DclOutputSgv(_) => (),
-            Operands::DclInputPsSiv(_) => (),
-            Operands::DclInputPsSgv(_) => (),
-            Operands::DclTemps(_) => (),
-            Operands::DclIndexableTemp(_) => (),
-            Operands::Add(_) => (),
-            Operands::And(_) => (),
-            Operands::Mul(_) => (),
-            Operands::Mad(_) => (),
-            Operands::Mov(_) => (),
-            Operands::Itof(_) => (),
-            Operands::Utof(_) => (),
-            Operands::Ftou(_) => (),
-            Operands::If(_) => (),
-            Operands::Else => (),
-            Operands::EndIf => (),
-            Operands::Loop => (),
-            Operands::EndLoop => (),
-            Operands::Break => (),
-            Operands::BreakC(_) => (),
-            Operands::Sample(_) => (),
-            Operands::SampleL(_) => (),
-            Operands::Ret => (),
-            Operands::Unknown => (),
+    fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
+        println!("{:#?}", instruction);
+        let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
+        let statement = match instruction.operands {
+            Operands::DclGlobalFlags(_) => None,
+            Operands::DclInput(_) => None,
+            Operands::DclInputPs(_) => None,
+            Operands::DclOutput(_) => None,
+            Operands::DclConstantBuffer(_) => None,
+            Operands::DclResource(_) => None,
+            Operands::DclSampler(_) => None,
+            Operands::DclOutputSiv(_) => None,
+            Operands::DclOutputSgv(_) => None,
+            Operands::DclInputPsSiv(_) => None,
+            Operands::DclInputPsSgv(_) => None,
+            Operands::DclTemps(_) => None,
+            Operands::DclIndexableTemp(_) => None,
+            Operands::Add(_) => None,
+            Operands::And(_) => None,
+            Operands::Mul(_) => None,
+            Operands::Mad(_) => None,
+            Operands::Mov(Mov { dst, src }) => {
+                let dst = self.get_variable_expression(dst, span);
+                let src = self.get_variable_expression(src, span);
+                None
+            }
+            Operands::Itof(_) => None,
+            Operands::Utof(_) => None,
+            Operands::Ftou(_) => None,
+            Operands::If(_) => None,
+            Operands::Else => None,
+            Operands::EndIf => None,
+            Operands::Loop => None,
+            Operands::EndLoop => None,
+            Operands::Break => None,
+            Operands::BreakC(_) => None,
+            Operands::Sample(_) => None,
+            Operands::SampleL(_) => None,
+            Operands::Ret => Some(Statement::Kill),
+            Operands::Unknown => None,
+        };
+
+        if let Some(s) = statement {
+            self.function.body.push(s, span);
         }
+
+        Action::Continue
+    }
+
+    fn finalize(&mut self) -> Action {
         Action::Continue
     }
 }
