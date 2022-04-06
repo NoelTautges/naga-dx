@@ -6,9 +6,9 @@ use dxbc::dr::{shex::*, Operands, *};
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
     Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
-    FunctionResult, GlobalVariable, Handle, Interpolation, LocalVariable, Module, ResourceBinding,
-    ScalarKind, ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type,
-    TypeInner, VectorSize,
+    FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ResourceBinding, ScalarKind,
+    ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner,
+    VectorSize,
 };
 
 enum ElementChunk {
@@ -81,19 +81,42 @@ impl NagaConsumer {
         let mut map = HashMap::<u32, TypeInner>::new();
 
         for elem in &sgn.elements {
+            dbg!(&elem);
             match map.entry(elem.semantic_index).or_insert(TypeInner::Struct {
                 members: vec![],
                 span: 0,
             }) {
                 TypeInner::Struct { members, span } => {
-                    let binding = if let SemanticName::Undefined = elem.semantic_type {
-                        Binding::Location {
-                            location: elem.register,
-                            interpolation: Some(Interpolation::Flat),
-                            sampling: None,
-                        }
+                    let kind = match elem.component_type {
+                        RegisterComponentType::Float32 => ScalarKind::Float,
+                        RegisterComponentType::Int32 => ScalarKind::Sint,
+                        RegisterComponentType::Uint32 => ScalarKind::Uint,
+                        RegisterComponentType::Unknown => todo!(),
+                    };
+
+                    let zeros = 8 - elem.component_mask.leading_zeros();
+                    let width = zeros * 4;
+                    // TODO: matrices? https://docs.rs/naga/latest/naga/enum.Binding.html#method.apply_default_interpolation
+                    let inner = if zeros == 1 {
+                        TypeInner::Scalar { kind, width: 4 }
                     } else {
-                        Binding::BuiltIn(match elem.semantic_type {
+                        TypeInner::Vector {
+                            size: get_vector_size(zeros as usize),
+                            kind,
+                            width: 4,
+                        }
+                    };
+
+                    let binding = if let SemanticName::Undefined = elem.semantic_type {
+                        let mut binding = Binding::Location {
+                            location: elem.register,
+                            interpolation: None,
+                            sampling: None,
+                        };
+                        binding.apply_default_interpolation(&inner);
+                        binding
+                    } else {
+                        let semantic = match elem.semantic_type {
                             SemanticName::Undefined => unreachable!(),
                             SemanticName::Position => BuiltIn::Position,
                             SemanticName::ClipDistance => BuiltIn::ClipDistance,
@@ -116,33 +139,19 @@ impl NagaConsumer {
                             SemanticName::Coverage => todo!(),
                             SemanticName::DepthGreaterEqual => todo!(),
                             SemanticName::DepthLessEqual => todo!(),
-                        })
+                        };
+                        Binding::BuiltIn(semantic)
                     };
 
-                    let kind = match elem.component_type {
-                        RegisterComponentType::Float32 => ScalarKind::Float,
-                        RegisterComponentType::Int32 => ScalarKind::Sint,
-                        RegisterComponentType::Uint32 => ScalarKind::Uint,
-                        RegisterComponentType::Unknown => todo!(),
-                    };
-
-                    let zeros = 8 - elem.component_mask.leading_zeros();
-                    let width = zeros * 4;
-                    let inner = if zeros == 1 {
-                        TypeInner::Scalar { kind, width: 4 }
-                    } else {
-                        TypeInner::Vector {
-                            size: get_vector_size(zeros as usize),
-                            kind,
-                            width: 4,
-                        }
-                    };
+                    // Delay constructing type because we need &inner for interpolation and sampling
                     let ty = Type {
-                        // TODO: type name
+                        // TODO: struct name
                         name: None,
                         inner,
                     };
+
                     members.push(StructMember {
+                        // TODO: create more sensible type name from input semantic fake name
                         name: Some(elem.name.clone()),
                         // TODO: spans
                         ty: self.module.types.insert(ty, Span::UNDEFINED),
