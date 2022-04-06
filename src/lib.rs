@@ -1,11 +1,14 @@
 use std::collections::HashMap;
+use std::mem::take;
 
 use dxbc::binary::{Action, Consumer, Parser, State};
 use dxbc::dr::{shex::*, Operands, *};
+use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
-    Binding, BuiltIn, Constant, ConstantInner, Expression, Function, FunctionArgument,
-    FunctionResult, Handle, Interpolation, Module, ScalarKind, ScalarValue, Span, Statement,
-    StructMember, Type, TypeInner, VectorSize,
+    Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
+    FunctionResult, GlobalVariable, Handle, Interpolation, Module, ResourceBinding, ScalarKind,
+    ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner,
+    VectorSize,
 };
 
 enum ElementChunk {
@@ -159,8 +162,36 @@ impl NagaConsumer {
         }
     }
 
-    fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Expression {
-        match op.get_operand_type() {
+    fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Handle<Expression> {
+        let expr = match op.get_operand_type() {
+            OperandType::Output => {
+                let first = match op.get_immediate(0) {
+                    Immediate::U32(n) => n,
+                    _ => unreachable!(),
+                };
+                // TODO: remove hardcoding
+                let global = GlobalVariable {
+                    name: Some("Position".to_owned()),
+                    class: StorageClass::Private,
+                    binding: Some(ResourceBinding {
+                        group: 0,
+                        binding: 0,
+                    }),
+                    ty: self.module.types.insert(
+                        Type {
+                            name: None,
+                            inner: TypeInner::Vector {
+                                size: VectorSize::Quad,
+                                kind: ScalarKind::Uint,
+                                width: 4,
+                            },
+                        },
+                        span,
+                    ),
+                    init: None,
+                };
+                Expression::GlobalVariable(self.module.global_variables.append(global, span))
+            }
             OperandType::Immediate32 => {
                 let imms = op.get_immediates();
                 let first = imms.first().unwrap();
@@ -222,7 +253,8 @@ impl NagaConsumer {
                 }
             }
             _ => todo!(),
-        }
+        };
+        self.function.expressions.append(expr, span)
     }
 }
 
@@ -238,16 +270,15 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_rdef(&mut self, rdef: &RdefChunk) -> Action {
-        println!("{:#?}", rdef);
         self.program_ty = rdef.program_ty;
-        Action::Continue
+        match self.program_ty {
+            // TODO: fail better
+            ProgramType::Geometry | ProgramType::Hull | ProgramType::Domain => unimplemented!(),
+            _ => Action::Continue,
+        }
     }
 
     fn consume_isgn(&mut self, isgn: &IOsgnChunk) -> Action {
-        println!("inputs");
-        for ine in &isgn.elements {
-            println!("{:#?}", ine);
-        }
         self.function.arguments = self
             .get_elements(isgn, ElementChunk::Input)
             .into_iter()
@@ -257,28 +288,21 @@ impl Consumer for NagaConsumer {
                 binding,
             })
             .collect();
-        println!("{:#?}", self.function.arguments);
         Action::Continue
     }
 
     fn consume_osgn(&mut self, osgn: &IOsgnChunk) -> Action {
-        println!("outputs");
-        for out in &osgn.elements {
-            println!("{:#?}", out);
-        }
         let mut elems = self.get_elements(osgn, ElementChunk::Output);
         if let Some(elem) = elems.pop() {
             self.function.result = Some(FunctionResult {
                 ty: elem.0,
                 binding: elem.1,
             });
-            println!("{:#?}", self.function.result);
         }
         Action::Continue
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
-        println!("{:#?}", instruction);
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
         let statement = match instruction.operands {
             Operands::DclGlobalFlags(_) => None,
@@ -301,7 +325,11 @@ impl Consumer for NagaConsumer {
             Operands::Mov(Mov { dst, src }) => {
                 let dst = self.get_variable_expression(dst, span);
                 let src = self.get_variable_expression(src, span);
-                None
+                let store = Statement::Store {
+                    pointer: dst,
+                    value: src,
+                };
+                Some(store)
             }
             Operands::Itof(_) => None,
             Operands::Utof(_) => None,
@@ -327,15 +355,30 @@ impl Consumer for NagaConsumer {
     }
 
     fn finalize(&mut self) -> Action {
+        self.module.entry_points.push(EntryPoint {
+            name: "main".to_owned(),
+            stage: match self.program_ty {
+                ProgramType::Pixel => ShaderStage::Fragment,
+                ProgramType::Vertex => ShaderStage::Vertex,
+                ProgramType::Compute => ShaderStage::Compute,
+                _ => unreachable!(),
+            },
+            early_depth_test: None,
+            workgroup_size: [0, 0, 0],
+            function: take(&mut self.function),
+        });
+        dbg!(&self.module.entry_points.first().unwrap().function.body);
         Action::Continue
     }
 }
 
-pub fn parse<T: AsRef<[u8]>>(shader_bytes: T) -> Result<NagaConsumer, State> {
+pub fn parse<T: AsRef<[u8]>>(shader_bytes: T) -> Result<(Module, ModuleInfo), State> {
     let mut consumer = NagaConsumer::new();
     let mut parser = Parser::new(shader_bytes.as_ref(), &mut consumer);
-    match parser.parse() {
-        Ok(_) => Ok(consumer),
-        Err(e) => Err(e),
+    if let Err(e) = parser.parse() {
+        return Err(e);
     }
+    let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+    let info = validator.validate(&consumer.module).unwrap();
+    Ok((consumer.module, info))
 }
