@@ -6,9 +6,9 @@ use dxbc::dr::{shex::*, Operands, *};
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
     Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
-    FunctionResult, GlobalVariable, Handle, Interpolation, Module, ResourceBinding, ScalarKind,
-    ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner,
-    VectorSize,
+    FunctionResult, GlobalVariable, Handle, Interpolation, LocalVariable, Module, ResourceBinding,
+    ScalarKind, ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type,
+    TypeInner, VectorSize,
 };
 
 enum ElementChunk {
@@ -16,31 +16,60 @@ enum ElementChunk {
     Output,
 }
 
+fn get_vector_size(size: usize) -> VectorSize {
+    match size {
+        2 => VectorSize::Bi,
+        3 => VectorSize::Tri,
+        4 => VectorSize::Quad,
+        // TODO: figure out better solution for this
+        _ => VectorSize::Quad,
+    }
+}
+
+fn get_scalar_value(imm: &Immediate) -> ScalarValue {
+    match imm {
+        Immediate::U32(n) => ScalarValue::Uint(*n as u64),
+        Immediate::U64(n) => ScalarValue::Uint(*n),
+        // TODO: find out what these are
+        Immediate::Relative(_) => todo!(),
+        Immediate::U32Relative(_, _) => todo!(),
+        Immediate::U64Relative(_, _) => todo!(),
+    }
+}
+
+fn get_scalar_width(imm: &Immediate) -> u8 {
+    match imm {
+        Immediate::U32(_) => 4,
+        Immediate::U64(_) => 8,
+        Immediate::Relative(_) => todo!(),
+        Immediate::U32Relative(_, _) => todo!(),
+        Immediate::U64Relative(_, _) => todo!(),
+    }
+}
+
 pub struct NagaConsumer {
+    /// Module populated in [`finalize`].
     module: Module,
+    /// Entry point function.
     function: Function,
+    /// Program type. Vertex, pixel, etc.
     program_ty: ProgramType,
+    /// Output struct as a [`LocalVariable`](Expression::LocalVariable).
+    out: Option<Handle<Expression>>,
 }
 
 impl NagaConsumer {
     fn new() -> Self {
+        let module = Module::default();
+        let function = Function {
+            name: Some("main".to_string()),
+            ..Function::default()
+        };
         NagaConsumer {
-            module: Module::default(),
-            function: Function {
-                name: Some("main".to_string()),
-                ..Function::default()
-            },
+            module,
+            function,
             program_ty: ProgramType::Vertex,
-        }
-    }
-
-    fn get_vector_size(&self, size: usize) -> VectorSize {
-        match size {
-            2 => VectorSize::Bi,
-            3 => VectorSize::Tri,
-            4 => VectorSize::Quad,
-            // TODO: figure out better solution for this
-            _ => VectorSize::Quad,
+            out: None,
         }
     }
 
@@ -50,12 +79,12 @@ impl NagaConsumer {
         chunk: ElementChunk,
     ) -> Vec<(Handle<Type>, Option<Binding>)> {
         let mut map = HashMap::<u32, TypeInner>::new();
+
         for elem in &sgn.elements {
             match map.entry(elem.semantic_index).or_insert(TypeInner::Struct {
                 members: vec![],
                 span: 0,
             }) {
-                // TODO: not using structs with only 1 entry
                 TypeInner::Struct { members, span } => {
                     let binding = if let SemanticName::Undefined = elem.semantic_type {
                         Binding::Location {
@@ -89,35 +118,38 @@ impl NagaConsumer {
                             SemanticName::DepthLessEqual => todo!(),
                         })
                     };
+
                     let kind = match elem.component_type {
                         RegisterComponentType::Float32 => ScalarKind::Float,
                         RegisterComponentType::Int32 => ScalarKind::Sint,
                         RegisterComponentType::Uint32 => ScalarKind::Uint,
                         RegisterComponentType::Unknown => todo!(),
                     };
+
+                    let zeros = 8 - elem.component_mask.leading_zeros();
+                    let width = zeros * 4;
+                    let inner = if zeros == 1 {
+                        TypeInner::Scalar { kind, width: 4 }
+                    } else {
+                        TypeInner::Vector {
+                            size: get_vector_size(zeros as usize),
+                            kind,
+                            width: 4,
+                        }
+                    };
                     let ty = Type {
                         // TODO: type name
                         name: None,
-                        inner: {
-                            let zeros = 8 - elem.component_mask.leading_zeros();
-                            *span += zeros * 4;
-                            match zeros {
-                                1 => TypeInner::Scalar { kind, width: 4 },
-                                _ => TypeInner::Vector {
-                                    size: self.get_vector_size(zeros as usize),
-                                    kind,
-                                    width: 4,
-                                },
-                            }
-                        },
+                        inner,
                     };
                     members.push(StructMember {
                         name: Some(elem.name.clone()),
                         // TODO: spans
                         ty: self.module.types.insert(ty, Span::UNDEFINED),
                         binding: Some(binding),
-                        offset: (members.len() * 4) as u32,
+                        offset: *span,
                     });
+                    *span += width;
                 }
                 _ => unreachable!(),
             }
@@ -139,27 +171,6 @@ impl NagaConsumer {
                 (self.module.types.insert(struct_, Span::UNDEFINED), None)
             })
             .collect()
-    }
-
-    fn get_scalar_value(&self, imm: &Immediate) -> ScalarValue {
-        match imm {
-            Immediate::U32(n) => ScalarValue::Uint(*n as u64),
-            Immediate::U64(n) => ScalarValue::Uint(*n),
-            // TODO: find out what these are
-            Immediate::Relative(_) => todo!(),
-            Immediate::U32Relative(_, _) => todo!(),
-            Immediate::U64Relative(_, _) => todo!(),
-        }
-    }
-
-    fn get_scalar_width(&self, imm: &Immediate) -> u8 {
-        match imm {
-            Immediate::U32(_) => 4,
-            Immediate::U64(_) => 8,
-            Immediate::Relative(_) => todo!(),
-            Immediate::U32Relative(_, _) => todo!(),
-            Immediate::U64Relative(_, _) => todo!(),
-        }
     }
 
     fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Handle<Expression> {
@@ -201,8 +212,8 @@ impl NagaConsumer {
                         // TODO: find out what this is
                         specialization: None,
                         inner: ConstantInner::Scalar {
-                            width: self.get_scalar_width(first),
-                            value: self.get_scalar_value(first),
+                            width: get_scalar_width(first),
+                            value: get_scalar_value(first),
                         },
                     };
                     let const_handle = self.module.constants.fetch_or_append(c, span);
@@ -218,7 +229,7 @@ impl NagaConsumer {
                     let ty = Type {
                         name: None,
                         inner: TypeInner::Vector {
-                            size: self.get_vector_size(imms.len()),
+                            size: get_vector_size(imms.len()),
                             kind: match first {
                                 Immediate::U32(_) | Immediate::U64(_) => ScalarKind::Uint,
                                 Immediate::Relative(_) => todo!(),
@@ -237,7 +248,7 @@ impl NagaConsumer {
                                 specialization: None,
                                 inner: ConstantInner::Scalar {
                                     width,
-                                    value: self.get_scalar_value(&imm),
+                                    value: get_scalar_value(&imm),
                                 },
                             };
                             self.module.constants.fetch_or_append(c, span)
@@ -288,6 +299,7 @@ impl Consumer for NagaConsumer {
                 binding,
             })
             .collect();
+        println!("done with inputs");
         Action::Continue
     }
 
@@ -298,11 +310,25 @@ impl Consumer for NagaConsumer {
                 ty: elem.0,
                 binding: elem.1,
             });
+            let out = LocalVariable {
+                name: Some(format!("{:?}Out", self.program_ty)),
+                ty: elem.0,
+                init: None,
+            };
+            let out = self.function.local_variables.append(out, Span::UNDEFINED);
+            let out = self
+                .function
+                .expressions
+                .append(Expression::LocalVariable(out), Span::UNDEFINED);
+            self.out = Some(out);
         }
+
         Action::Continue
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
+        dbg!(&instruction);
+        return Action::Continue;
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
         let statement = match instruction.operands {
             Operands::DclGlobalFlags(_) => None,
@@ -343,7 +369,10 @@ impl Consumer for NagaConsumer {
             Operands::BreakC(_) => None,
             Operands::Sample(_) => None,
             Operands::SampleL(_) => None,
-            Operands::Ret => Some(Statement::Kill),
+            Operands::Ret => match &self.function.result {
+                Some(r) => None,
+                None => None,
+            },
             Operands::Unknown => None,
         };
 
