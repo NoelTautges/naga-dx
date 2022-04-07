@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::mem::take;
 
 use dxbc::binary::{Action, Consumer, Parser, State};
@@ -6,15 +5,9 @@ use dxbc::dr::{shex::*, Operands, *};
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
     Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
-    FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ResourceBinding, ScalarKind,
-    ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner,
-    VectorSize,
+    FunctionResult, GlobalVariable, Handle, Module, ResourceBinding, ScalarKind, ScalarValue,
+    ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner, VectorSize,
 };
-
-enum ElementChunk {
-    Input,
-    Output,
-}
 
 fn get_vector_size(size: usize) -> VectorSize {
     match size {
@@ -54,8 +47,6 @@ pub struct NagaConsumer {
     function: Function,
     /// Program type. Vertex, pixel, etc.
     program_ty: ProgramType,
-    /// Output struct as a [`LocalVariable`](Expression::LocalVariable).
-    out: Option<Handle<Expression>>,
 }
 
 impl NagaConsumer {
@@ -69,117 +60,91 @@ impl NagaConsumer {
             module,
             function,
             program_ty: ProgramType::Vertex,
-            out: None,
         }
     }
 
-    fn get_elements(
-        &mut self,
-        sgn: &IOsgnChunk,
-        chunk: ElementChunk,
-    ) -> Vec<(Handle<Type>, Option<Binding>)> {
-        let mut map = HashMap::<u32, TypeInner>::new();
+    fn get_elements(&mut self, sgn: &IOsgnChunk) -> TypeInner {
+        let mut members = Vec::with_capacity(sgn.elements.len());
+        let mut span = 0;
 
         for elem in &sgn.elements {
             dbg!(&elem);
-            match map.entry(elem.semantic_index).or_insert(TypeInner::Struct {
-                members: vec![],
-                span: 0,
-            }) {
-                TypeInner::Struct { members, span } => {
-                    let kind = match elem.component_type {
-                        RegisterComponentType::Float32 => ScalarKind::Float,
-                        RegisterComponentType::Int32 => ScalarKind::Sint,
-                        RegisterComponentType::Uint32 => ScalarKind::Uint,
-                        RegisterComponentType::Unknown => todo!(),
-                    };
+            let kind = match elem.component_type {
+                RegisterComponentType::Float32 => ScalarKind::Float,
+                RegisterComponentType::Int32 => ScalarKind::Sint,
+                RegisterComponentType::Uint32 => ScalarKind::Uint,
+                RegisterComponentType::Unknown => todo!(),
+            };
 
-                    let zeros = 8 - elem.component_mask.leading_zeros();
-                    let width = zeros * 4;
-                    // TODO: matrices? https://docs.rs/naga/latest/naga/enum.Binding.html#method.apply_default_interpolation
-                    let inner = if zeros == 1 {
-                        TypeInner::Scalar { kind, width: 4 }
-                    } else {
-                        TypeInner::Vector {
-                            size: get_vector_size(zeros as usize),
-                            kind,
-                            width: 4,
-                        }
-                    };
-
-                    let binding = if let SemanticName::Undefined = elem.semantic_type {
-                        let mut binding = Binding::Location {
-                            location: elem.register,
-                            interpolation: None,
-                            sampling: None,
-                        };
-                        binding.apply_default_interpolation(&inner);
-                        binding
-                    } else {
-                        let semantic = match elem.semantic_type {
-                            SemanticName::Undefined => unreachable!(),
-                            SemanticName::Position => BuiltIn::Position,
-                            SemanticName::ClipDistance => BuiltIn::ClipDistance,
-                            SemanticName::CullDistance => BuiltIn::CullDistance,
-                            SemanticName::RenderTargetArrayIndex => todo!(),
-                            SemanticName::ViewportArrayIndex => BuiltIn::ViewIndex,
-                            SemanticName::VertexId => BuiltIn::VertexIndex,
-                            SemanticName::PrimitiveId => BuiltIn::PrimitiveIndex,
-                            SemanticName::InstanceId => BuiltIn::InstanceIndex,
-                            SemanticName::IsFrontFace => BuiltIn::FrontFacing,
-                            SemanticName::SampleIndex => BuiltIn::SampleIndex,
-                            SemanticName::FinalQuadEdgeTessfactor => todo!(),
-                            SemanticName::FinalQuadInsideTessfactor => todo!(),
-                            SemanticName::FinalTriEdgeTessfactor => todo!(),
-                            SemanticName::FinalTriInsideTessfactor => todo!(),
-                            SemanticName::FinalLineDetailTessfactor => todo!(),
-                            SemanticName::FinalLineDensityTessfactor => todo!(),
-                            SemanticName::Target => todo!(),
-                            SemanticName::Depth => BuiltIn::FragDepth,
-                            SemanticName::Coverage => todo!(),
-                            SemanticName::DepthGreaterEqual => todo!(),
-                            SemanticName::DepthLessEqual => todo!(),
-                        };
-                        Binding::BuiltIn(semantic)
-                    };
-
-                    // Delay constructing type because we need &inner for interpolation and sampling
-                    let ty = Type {
-                        // TODO: struct name
-                        name: None,
-                        inner,
-                    };
-
-                    members.push(StructMember {
-                        // TODO: create more sensible type name from input semantic fake name
-                        name: Some(elem.name.clone()),
-                        // TODO: spans
-                        ty: self.module.types.insert(ty, Span::UNDEFINED),
-                        binding: Some(binding),
-                        offset: *span,
-                    });
-                    *span += width;
+            let zeros = 8 - elem.component_mask.leading_zeros();
+            let width = zeros * 4;
+            // TODO: matrices? https://docs.rs/naga/latest/naga/enum.Binding.html#method.apply_default_interpolation
+            let inner = if zeros == 1 {
+                TypeInner::Scalar { kind, width: 4 }
+            } else {
+                TypeInner::Vector {
+                    size: get_vector_size(zeros as usize),
+                    kind,
+                    width: 4,
                 }
-                _ => unreachable!(),
-            }
+            };
+
+            // TODO: find binding from fake input name
+            let binding = if let SemanticName::Undefined = elem.semantic_type {
+                let mut binding = Binding::Location {
+                    location: elem.register,
+                    interpolation: None,
+                    sampling: None,
+                };
+                binding.apply_default_interpolation(&inner);
+                binding
+            } else {
+                let semantic = match elem.semantic_type {
+                    SemanticName::Undefined => unreachable!(),
+                    SemanticName::Position => BuiltIn::Position,
+                    SemanticName::ClipDistance => BuiltIn::ClipDistance,
+                    SemanticName::CullDistance => BuiltIn::CullDistance,
+                    SemanticName::RenderTargetArrayIndex => todo!(),
+                    SemanticName::ViewportArrayIndex => BuiltIn::ViewIndex,
+                    SemanticName::VertexId => BuiltIn::VertexIndex,
+                    SemanticName::PrimitiveId => BuiltIn::PrimitiveIndex,
+                    SemanticName::InstanceId => BuiltIn::InstanceIndex,
+                    SemanticName::IsFrontFace => BuiltIn::FrontFacing,
+                    SemanticName::SampleIndex => BuiltIn::SampleIndex,
+                    SemanticName::FinalQuadEdgeTessfactor => todo!(),
+                    SemanticName::FinalQuadInsideTessfactor => todo!(),
+                    SemanticName::FinalTriEdgeTessfactor => todo!(),
+                    SemanticName::FinalTriInsideTessfactor => todo!(),
+                    SemanticName::FinalLineDetailTessfactor => todo!(),
+                    SemanticName::FinalLineDensityTessfactor => todo!(),
+                    SemanticName::Target => todo!(),
+                    SemanticName::Depth => BuiltIn::FragDepth,
+                    SemanticName::Coverage => todo!(),
+                    SemanticName::DepthGreaterEqual => todo!(),
+                    SemanticName::DepthLessEqual => todo!(),
+                };
+                Binding::BuiltIn(semantic)
+            };
+
+            // Delay constructing type because we need &inner for interpolation and sampling
+            let ty = Type {
+                // TODO: struct name
+                name: None,
+                inner,
+            };
+
+            members.push(StructMember {
+                // TODO: create more sensible type name from fake semantic name
+                name: Some(elem.name.clone()),
+                // TODO: spans
+                ty: self.module.types.insert(ty, Span::UNDEFINED),
+                binding: Some(binding),
+                offset: span,
+            });
+            span += width;
         }
 
-        map.into_iter()
-            .map(|(i, ty)| {
-                let struct_ = Type {
-                    name: Some(format!(
-                        "{}_{}",
-                        match chunk {
-                            ElementChunk::Input => "input",
-                            ElementChunk::Output => "output",
-                        },
-                        i,
-                    )),
-                    inner: ty,
-                };
-                (self.module.types.insert(struct_, Span::UNDEFINED), None)
-            })
-            .collect()
+        TypeInner::Struct { members, span }
     }
 
     fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Handle<Expression> {
@@ -299,38 +264,30 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_isgn(&mut self, isgn: &IOsgnChunk) -> Action {
-        self.function.arguments = self
-            .get_elements(isgn, ElementChunk::Input)
-            .into_iter()
-            .map(|(ty, binding)| FunctionArgument {
-                name: None,
-                ty,
-                binding,
-            })
-            .collect();
+        let s = self.get_elements(isgn);
+        if let TypeInner::Struct { members, .. } = s {
+            for member in members {
+                let arg = FunctionArgument {
+                    name: member.name,
+                    ty: member.ty,
+                    binding: member.binding,
+                };
+                self.function.arguments.push(arg);
+            }
+        }
         println!("done with inputs");
         Action::Continue
     }
 
     fn consume_osgn(&mut self, osgn: &IOsgnChunk) -> Action {
-        let mut elems = self.get_elements(osgn, ElementChunk::Output);
-        if let Some(elem) = elems.pop() {
-            self.function.result = Some(FunctionResult {
-                ty: elem.0,
-                binding: elem.1,
-            });
-            let out = LocalVariable {
-                name: Some(format!("{:?}Out", self.program_ty)),
-                ty: elem.0,
-                init: None,
-            };
-            let out = self.function.local_variables.append(out, Span::UNDEFINED);
-            let out = self
-                .function
-                .expressions
-                .append(Expression::LocalVariable(out), Span::UNDEFINED);
-            self.out = Some(out);
-        }
+        let s = self.get_elements(osgn);
+        let ty = Type {
+            name: None,
+            inner: s,
+        };
+        let ty = self.module.types.insert(ty, Span::UNDEFINED);
+        let result = FunctionResult { ty, binding: None };
+        self.function.result = Some(result);
 
         Action::Continue
     }
@@ -339,6 +296,7 @@ impl Consumer for NagaConsumer {
         dbg!(&instruction);
         return Action::Continue;
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
+
         let statement = match instruction.operands {
             Operands::DclGlobalFlags(_) => None,
             Operands::DclInput(_) => None,
@@ -405,7 +363,6 @@ impl Consumer for NagaConsumer {
             workgroup_size: [0, 0, 0],
             function: take(&mut self.function),
         });
-        dbg!(&self.module.entry_points.first().unwrap().function.body);
         Action::Continue
     }
 }
