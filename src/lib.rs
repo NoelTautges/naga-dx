@@ -77,7 +77,7 @@ impl NagaConsumer {
         }
     }
 
-    fn get_elements(&mut self, sgn: &IOsgnChunk) -> TypeInner {
+    fn get_io_elements(&mut self, sgn: &IOsgnChunk) -> TypeInner {
         let mut members = Vec::with_capacity(sgn.elements.len());
         let mut span = 0;
 
@@ -315,7 +315,7 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_isgn(&mut self, isgn: &IOsgnChunk) -> Action {
-        let s = self.get_elements(isgn);
+        let s = self.get_io_elements(isgn);
 
         if let TypeInner::Struct { members, .. } = s {
             for member in members {
@@ -332,7 +332,7 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_osgn(&mut self, osgn: &IOsgnChunk) -> Action {
-        let s = self.get_elements(osgn);
+        let s = self.get_io_elements(osgn);
 
         // Skip adding output struct if it's empty
         if let TypeInner::Struct { members, .. } = &s {
