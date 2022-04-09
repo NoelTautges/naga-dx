@@ -104,53 +104,14 @@ impl NagaConsumer {
             };
 
             let binding = if let SemanticName::Undefined = elem.semantic_type {
-                // Test for system-value semantics in inputs
-                // https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-semantics#system-value-semantics
-                // TODO: restrict system-value semantics based on shader stage
-                // TODO: handle [n]-ending system value semantics
-                // TODO: match the rest of these up
-                let system_value = match elem.name.to_lowercase().as_str() {
-                    sv if sv.starts_with("sv_clipdistance") => None,
-                    sv if sv.starts_with("sv_culldistance") => None,
-                    "sv_coverage" => None,
-                    "sv_depth" => Some(BuiltIn::FragDepth),
-                    "sv_depthgreaterequal" => None,
-                    "sv_depthlessequal" => None,
-                    "sv_dispatchthreadid" => None,
-                    "sv_domainlocation" => None,
-                    "sv_groupid" => None,
-                    "sv_groupindex" => None,
-                    "sv_groupthreadid" => None,
-                    "sv_gsinstanceid" => None,
-                    "sv_innercoverage" => None,
-                    "sv_insidetessfactor" => None,
-                    "sv_instanceid" => None,
-                    "sv_isfrontface" => None,
-                    "sv_outputcontrolpointid" => None,
-                    "sv_position" => Some(BuiltIn::Position),
-                    "sv_primitiveid" => None,
-                    "sv_rendertargetarrayindex" => None,
-                    "sv_sampleindex" => None,
-                    "sv_stencilref" => None,
-                    sv if sv.starts_with("sv_target") => None,
-                    "sv_tessfactor" => None,
-                    "sv_vertexid" => None,
-                    "sv_viewportarrayindex" => None,
-                    "sv_shadingrate" => None,
-                    _ => None,
+                // TODO: figure out what I should do with input names
+                let mut binding = Binding::Location {
+                    location: elem.register,
+                    interpolation: None,
+                    sampling: None,
                 };
-
-                if let Some(sv) = system_value {
-                    Binding::BuiltIn(sv)
-                } else {
-                    let mut binding = Binding::Location {
-                        location: elem.register,
-                        interpolation: None,
-                        sampling: None,
-                    };
-                    binding.apply_default_interpolation(&inner);
-                    binding
-                }
+                binding.apply_default_interpolation(&inner);
+                binding
             } else {
                 let semantic = match elem.semantic_type {
                     SemanticName::Undefined => unreachable!(),
