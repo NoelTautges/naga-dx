@@ -5,9 +5,8 @@ use dxbc::dr::{shex::*, Operands, *};
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
     Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
-    FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ResourceBinding, ScalarKind,
-    ScalarValue, ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner,
-    VectorSize,
+    FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ScalarKind, ScalarValue,
+    ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner, VectorSize,
 };
 
 fn get_vector_size(size: usize) -> VectorSize {
@@ -58,6 +57,8 @@ pub struct NagaConsumer {
     program_ty: ProgramType,
     /// Temporary registers as [`Expression::LocalVariable`]s.
     temps: Vec<Handle<Expression>>,
+    /// Output struct members as [`Expression`]s.
+    outs: Vec<Handle<Expression>>,
 }
 
 impl NagaConsumer {
@@ -72,6 +73,7 @@ impl NagaConsumer {
             function,
             program_ty: ProgramType::Vertex,
             temps: vec![],
+            outs: vec![],
         }
     }
 
@@ -101,15 +103,54 @@ impl NagaConsumer {
                 }
             };
 
-            // TODO: find binding from fake input name
             let binding = if let SemanticName::Undefined = elem.semantic_type {
-                let mut binding = Binding::Location {
-                    location: elem.register,
-                    interpolation: None,
-                    sampling: None,
+                // Test for system-value semantics in inputs
+                // https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-semantics#system-value-semantics
+                // TODO: restrict system-value semantics based on shader stage
+                // TODO: handle [n]-ending system value semantics
+                // TODO: match the rest of these up
+                let system_value = match elem.name.to_lowercase().as_str() {
+                    sv if sv.starts_with("sv_clipdistance") => None,
+                    sv if sv.starts_with("sv_culldistance") => None,
+                    "sv_coverage" => None,
+                    "sv_depth" => Some(BuiltIn::FragDepth),
+                    "sv_depthgreaterequal" => None,
+                    "sv_depthlessequal" => None,
+                    "sv_dispatchthreadid" => None,
+                    "sv_domainlocation" => None,
+                    "sv_groupid" => None,
+                    "sv_groupindex" => None,
+                    "sv_groupthreadid" => None,
+                    "sv_gsinstanceid" => None,
+                    "sv_innercoverage" => None,
+                    "sv_insidetessfactor" => None,
+                    "sv_instanceid" => None,
+                    "sv_isfrontface" => None,
+                    "sv_outputcontrolpointid" => None,
+                    "sv_position" => Some(BuiltIn::Position),
+                    "sv_primitiveid" => None,
+                    "sv_rendertargetarrayindex" => None,
+                    "sv_sampleindex" => None,
+                    "sv_stencilref" => None,
+                    sv if sv.starts_with("sv_target") => None,
+                    "sv_tessfactor" => None,
+                    "sv_vertexid" => None,
+                    "sv_viewportarrayindex" => None,
+                    "sv_shadingrate" => None,
+                    _ => None,
                 };
-                binding.apply_default_interpolation(&inner);
-                binding
+
+                if let Some(sv) = system_value {
+                    Binding::BuiltIn(sv)
+                } else {
+                    let mut binding = Binding::Location {
+                        location: elem.register,
+                        interpolation: None,
+                        sampling: None,
+                    };
+                    binding.apply_default_interpolation(&inner);
+                    binding
+                }
             } else {
                 let semantic = match elem.semantic_type {
                     SemanticName::Undefined => unreachable!(),
@@ -137,6 +178,7 @@ impl NagaConsumer {
                 };
                 Binding::BuiltIn(semantic)
             };
+            dbg!(&inner);
 
             // Type construction is delayed because we need &inner for interpolation and sampling
             let ty = Type {
@@ -164,33 +206,6 @@ impl NagaConsumer {
             OperandType::Input => {
                 let first = get_first_immediate(&op);
                 Some(Expression::FunctionArgument(first))
-            }
-            OperandType::Output => {
-                let first = get_first_immediate(&op);
-                // TODO: remove hardcoding
-                let global = GlobalVariable {
-                    name: Some("Position".to_owned()),
-                    class: StorageClass::Private,
-                    binding: Some(ResourceBinding {
-                        group: 0,
-                        binding: 0,
-                    }),
-                    ty: self.module.types.insert(
-                        Type {
-                            name: None,
-                            inner: TypeInner::Vector {
-                                size: VectorSize::Quad,
-                                kind: ScalarKind::Uint,
-                                width: 4,
-                            },
-                        },
-                        span,
-                    ),
-                    init: None,
-                };
-                Some(Expression::GlobalVariable(
-                    self.module.global_variables.append(global, span),
-                ))
             }
             OperandType::Immediate32 => {
                 let imms = op.get_immediates();
@@ -261,11 +276,12 @@ impl NagaConsumer {
 
         let handle = match op.get_operand_type() {
             OperandType::Temp => {
-                let i = match op.get_immediate(0) {
-                    Immediate::U32(n) => n,
-                    _ => unreachable!(),
-                };
+                let i = get_first_immediate(&op);
                 Some(self.temps[i as usize])
+            }
+            OperandType::Output => {
+                let i = get_first_immediate(&op);
+                Some(self.outs[i as usize])
             }
             _ => todo!(),
         };
@@ -300,6 +316,7 @@ impl Consumer for NagaConsumer {
 
     fn consume_isgn(&mut self, isgn: &IOsgnChunk) -> Action {
         let s = self.get_elements(isgn);
+
         if let TypeInner::Struct { members, .. } = s {
             for member in members {
                 let arg = FunctionArgument {
@@ -310,7 +327,7 @@ impl Consumer for NagaConsumer {
                 self.function.arguments.push(arg);
             }
         }
-        println!("done with inputs");
+
         Action::Continue
     }
 
@@ -322,6 +339,41 @@ impl Consumer for NagaConsumer {
             if members.is_empty() {
                 return Action::Continue;
             }
+
+            let len = self.function.expressions.len();
+            for member in members {
+                if let Some(binding) = &member.binding {
+                    let expr = match binding {
+                        Binding::BuiltIn(_) => {
+                            let global = GlobalVariable {
+                                name: member.name.clone(),
+                                class: StorageClass::Private,
+                                // TODO: find out if we need ResourceBindings on global variables
+                                binding: None,
+                                ty: member.ty,
+                                init: None,
+                            };
+                            let global =
+                                self.module.global_variables.append(global, Span::UNDEFINED);
+                            Expression::GlobalVariable(global)
+                        }
+                        Binding::Location { .. } => {
+                            let local = LocalVariable {
+                                name: member.name.clone(),
+                                ty: member.ty,
+                                init: None,
+                            };
+                            let local =
+                                self.function.local_variables.append(local, Span::UNDEFINED);
+                            Expression::LocalVariable(local)
+                        }
+                    };
+                    let handle = self.function.expressions.append(expr, Span::UNDEFINED);
+                    self.outs.push(handle);
+                }
+            }
+            let emit = Statement::Emit(self.function.expressions.range_from(len));
+            self.function.body.push(emit, Span::UNDEFINED);
         }
 
         let ty = Type {
@@ -404,10 +456,17 @@ impl Consumer for NagaConsumer {
             Operands::SampleL(_) => None,
             Operands::Ret => match &self.function.result {
                 Some(r) => {
-                    if let TypeInner::Struct { members, .. } = &self.module.types[r.ty].inner {
-                        None
+                    if let TypeInner::Struct { .. } = &self.module.types[r.ty].inner {
+                        let compose = Expression::Compose {
+                            ty: r.ty,
+                            components: self.outs.clone(),
+                        };
+                        let compose = self.function.expressions.append(compose, span);
+                        Some(Statement::Return {
+                            value: Some(compose),
+                        })
                     } else {
-                        None
+                        Some(Statement::Return { value: None })
                     }
                 }
                 None => Some(Statement::Return { value: None }),
