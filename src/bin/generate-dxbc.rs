@@ -184,7 +184,7 @@ fn find_shaders(shader_dir: &PathBuf, output_dir: &PathBuf) -> Vec<ShaderJob> {
                     model: *model,
                 };
                 if let Some((relative_input_path, output_path)) =
-                    get_compiled_path(&path, &output_dir, &shader)
+                    get_compiled_path(&path, output_dir, &shader)
                 {
                     jobs.push(ShaderJob {
                         shader,
@@ -216,13 +216,13 @@ fn main() -> Result<()> {
     // Create the parent directories of all compiled shaders
     jobs.retain(|job| {
         if let Some(parent) = job.output_path.parent() {
-            if let Err(_) = fs::create_dir_all(parent) {
+            if fs::create_dir_all(parent).is_err() {
                 eprintln!("Error creating output directory {}!", parent.display());
                 return false;
             }
         }
 
-        return true;
+        true
     });
 
     jobs.par_iter()
@@ -262,7 +262,7 @@ fn main() -> Result<()> {
                         output.status.code().unwrap_or(-1),
                     )
                     .red(),
-                    stderr.replace("\n", "\n    "),
+                    stderr.replace('\n', "\n    "),
                 );
             } else {
                 println!(
