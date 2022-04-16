@@ -135,15 +135,10 @@ fn get_compiled_path(
     }
 }
 
-#[cfg(target_os = "windows")]
-fn main() -> Result<()> {
-    let fxc = get_fxc_path()?;
 
-    let shader_dir = fs::canonicalize(std::env::current_exe()?.join("../../../shaders"))?;
-    let mut output_dir = shader_dir.clone();
-    output_dir.push("compiled");
-    let mut jobs: Vec<ShaderJob> = vec![];
-    println!("Finding shaders...");
+/// Returns shader paths and profiles to compile.
+fn find_shaders(shader_dir: &PathBuf, output_dir: &PathBuf) -> Vec<ShaderJob> {
+    let mut jobs = Vec::new();
 
     for entry in WalkDir::new(&shader_dir).into_iter().filter_map(|e| e.ok()) {
         let path = match fs::canonicalize(entry.into_path()) {
@@ -203,8 +198,23 @@ fn main() -> Result<()> {
         }
     }
 
+    jobs
+}
+
+#[cfg(target_os = "windows")]
+fn main() -> Result<()> {
+    let fxc = get_fxc_path()?;
+
+    let shader_dir = fs::canonicalize(std::env::current_exe()?.join("../../../shaders"))?;
+    let mut output_dir = shader_dir.clone();
+    output_dir.push("compiled");
+    println!("Finding shaders...");
+    
+    let mut jobs: Vec<ShaderJob> = find_shaders(&shader_dir, &output_dir);
+
     println!("Shaders to compile: {}\n", jobs.len());
 
+    // Create the parent directories of all compiled shaders
     jobs.retain(|job| {
         if let Some(parent) = job.output_path.parent() {
             if let Err(_) = fs::create_dir_all(parent) {
