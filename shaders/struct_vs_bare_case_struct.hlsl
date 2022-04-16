@@ -1,3 +1,5 @@
+// SM: 4_1, 5_1
+
 struct vs_input {
     float4 position : SV_Position;
 };

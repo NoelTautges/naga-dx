@@ -11,6 +11,7 @@ find-winsdk = "0.2.0"
 glob = "0.3.0"
 indicatif = { version = "0.16.2", features = ["rayon"] }
 naga = { version = "0.8.5", features = ["hlsl-out"] }
+owo-colors = "3.3.0"
 rayon = "1.5.1"
 walkdir = "2.3.2"
 
