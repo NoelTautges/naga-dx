@@ -135,7 +135,6 @@ fn get_compiled_path(
     }
 }
 
-
 /// Returns shader paths and profiles to compile.
 fn find_shaders(shader_dir: &PathBuf, output_dir: &PathBuf) -> Vec<ShaderJob> {
     let mut jobs = Vec::new();
@@ -209,7 +208,7 @@ fn main() -> Result<()> {
     let mut output_dir = shader_dir.clone();
     output_dir.push("compiled");
     println!("Finding shaders...");
-    
+
     let mut jobs: Vec<ShaderJob> = find_shaders(&shader_dir, &output_dir);
 
     println!("Shaders to compile: {}\n", jobs.len());
