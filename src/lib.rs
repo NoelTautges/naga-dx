@@ -6,7 +6,8 @@ use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::{
     Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
     FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ScalarKind, ScalarValue,
-    ShaderStage, Span, Statement, StorageClass, StructMember, Type, TypeInner, VectorSize,
+    ShaderStage, Span, Statement, StorageClass, StructMember, SwizzleComponent, Type, TypeInner,
+    VectorSize,
 };
 
 fn get_vector_size(size: usize) -> VectorSize {
@@ -48,6 +49,35 @@ fn get_first_immediate(op: &OperandToken0) -> u32 {
     }
 }
 
+fn get_swizzle_component(c: &ComponentName) -> SwizzleComponent {
+    match c {
+        ComponentName::X => SwizzleComponent::X,
+        ComponentName::Y => SwizzleComponent::Y,
+        ComponentName::Z => SwizzleComponent::Z,
+        ComponentName::W => SwizzleComponent::W,
+    }
+}
+
+fn get_swizzle_components(c: &ComponentSwizzle) -> [SwizzleComponent; 4] {
+    [
+        get_swizzle_component(&c.0),
+        get_swizzle_component(&c.1),
+        get_swizzle_component(&c.2),
+        get_swizzle_component(&c.3),
+    ]
+}
+
+fn get_scalar_kind(ty: &ShaderVariableType) -> ScalarKind {
+    match ty {
+        ShaderVariableType::Int_ => ScalarKind::Sint,
+        ShaderVariableType::UInt => ScalarKind::Uint,
+        ShaderVariableType::UInt8 => ScalarKind::Uint,
+        ShaderVariableType::Float => ScalarKind::Float,
+        ShaderVariableType::Bool => ScalarKind::Bool,
+        _ => todo!(),
+    }
+}
+
 pub struct NagaConsumer {
     /// Module populated in [`finalize`].
     module: Module,
@@ -82,7 +112,6 @@ impl NagaConsumer {
         let mut span = 0;
 
         for elem in &sgn.elements {
-            dbg!(&elem);
             let kind = match elem.component_type {
                 RegisterComponentType::Float32 => ScalarKind::Float,
                 RegisterComponentType::Int32 => ScalarKind::Sint,
@@ -139,7 +168,6 @@ impl NagaConsumer {
                 };
                 Binding::BuiltIn(semantic)
             };
-            dbg!(&inner);
 
             // Type construction is delayed because we need &inner for interpolation and sampling
             let ty = Type {
@@ -162,10 +190,21 @@ impl NagaConsumer {
         TypeInner::Struct { members, span }
     }
 
-    fn get_variable_expression(&mut self, op: OperandToken0, span: Span) -> Handle<Expression> {
+    /*fn get_swizzle(&mut self, op: &OperandToken0, span: &Span) -> Handle<Expression> {
+        match op.get_component_select_mode() {
+            ComponentSelectMode::Mask => todo!(),
+            ComponentSelectMode::Swizzle => todo!(),
+            ComponentSelectMode::Select1 => {
+                let name = get_swizzle_component(&op.get_component_swizzle().0);
+                [name, name, name, name]
+            }
+        }
+    }*/
+
+    fn get_variable_expression(&mut self, op: &OperandToken0, span: &Span) -> Handle<Expression> {
         let expr = match op.get_operand_type() {
             OperandType::Input => {
-                let first = get_first_immediate(&op);
+                let first = get_first_immediate(op);
                 Some(Expression::FunctionArgument(first))
             }
             OperandType::Immediate32 => {
@@ -181,7 +220,7 @@ impl NagaConsumer {
                             value: get_scalar_value(first),
                         },
                     };
-                    let const_handle = self.module.constants.fetch_or_append(c, span);
+                    let const_handle = self.module.constants.fetch_or_append(c, *span);
                     Some(Expression::Constant(const_handle))
                 } else {
                     let width = match first {
@@ -204,7 +243,7 @@ impl NagaConsumer {
                             width,
                         },
                     };
-                    let ty = self.module.types.insert(ty, span);
+                    let ty = self.module.types.insert(ty, *span);
                     let components: Vec<Handle<Constant>> = imms
                         .into_iter()
                         .map(|imm| {
@@ -216,7 +255,7 @@ impl NagaConsumer {
                                     value: get_scalar_value(&imm),
                                 },
                             };
-                            self.module.constants.fetch_or_append(c, span)
+                            self.module.constants.fetch_or_append(c, *span)
                         })
                         .collect();
                     let c = Constant {
@@ -224,7 +263,7 @@ impl NagaConsumer {
                         specialization: None,
                         inner: ConstantInner::Composite { ty, components },
                     };
-                    let handle = self.module.constants.fetch_or_append(c, span);
+                    let handle = self.module.constants.fetch_or_append(c, *span);
                     Some(Expression::Constant(handle))
                 }
             }
@@ -232,16 +271,16 @@ impl NagaConsumer {
         };
 
         if let Some(e) = expr {
-            return self.function.expressions.append(e, span);
+            return self.function.expressions.append(e, *span);
         }
 
         let handle = match op.get_operand_type() {
             OperandType::Temp => {
-                let i = get_first_immediate(&op);
+                let i = get_first_immediate(op);
                 Some(self.temps[i as usize])
             }
             OperandType::Output => {
-                let i = get_first_immediate(&op);
+                let i = get_first_immediate(op);
                 Some(self.outs[i as usize])
             }
             _ => todo!(),
@@ -253,6 +292,22 @@ impl NagaConsumer {
             todo!()
         }
     }
+
+    /*fn register_shader_type(&mut self, ty: &ShaderType) -> Handle<Type> {
+        let inner = match ty.class {
+            ShaderVariableClass::Scalar => TypeInner::Scalar {
+                kind: get_scalar_kind(&ty.ty),
+                width: get_scalar,
+            },
+            ShaderVariableClass::Vector => todo!(),
+            ShaderVariableClass::MatrixRows => todo!(),
+            ShaderVariableClass::MatrixColumns => todo!(),
+            ShaderVariableClass::Object => todo!(),
+            ShaderVariableClass::Struct => todo!(),
+            ShaderVariableClass::InterfaceClass => todo!(),
+            ShaderVariableClass::InterfacePointer => todo!(), 
+        };
+    }*/
 }
 
 impl Default for NagaConsumer {
@@ -267,7 +322,23 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_rdef(&mut self, rdef: &RdefChunk) -> Action {
+        dbg!(rdef);
         self.program_ty = rdef.program_ty;
+
+        for cb in &rdef.constant_buffers {
+            let mut ty = TypeInner::Struct {
+                members: Vec::new(),
+                span: 0,
+            };
+            // I Can't Believe It's Not Struct
+            if let TypeInner::Struct { members, span } = ty {   
+                for var in &cb.variables {
+                    let name = Some(var.name.to_owned());
+
+                }
+            }
+        }
+
         match self.program_ty {
             // TODO: fail better
             ProgramType::Geometry | ProgramType::Hull | ProgramType::Domain => unimplemented!(),
@@ -349,7 +420,6 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
-        dbg!(&instruction);
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
 
         let statement = match instruction.operands {
@@ -395,8 +465,8 @@ impl Consumer for NagaConsumer {
             Operands::Mul(_) => None,
             Operands::Mad(_) => None,
             Operands::Mov(Mov { dst, src }) => {
-                let dst = self.get_variable_expression(dst, span);
-                let src = self.get_variable_expression(src, span);
+                let dst = self.get_variable_expression(&dst, &span);
+                let src = self.get_variable_expression(&src, &span);
                 let store = Statement::Store {
                     pointer: dst,
                     value: src,
