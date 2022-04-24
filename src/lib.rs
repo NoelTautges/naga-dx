@@ -1,82 +1,15 @@
+mod io;
+mod utils;
+
 use std::mem::take;
 
 use dxbc::binary::{Action, Consumer, Parser, State};
-use dxbc::dr::{shex::*, Operands, *};
+use dxbc::dr::shex::{Immediate, OperandType};
+use dxbc::dr::*;
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
-use naga::{
-    Binding, BuiltIn, Constant, ConstantInner, EntryPoint, Expression, Function, FunctionArgument,
-    FunctionResult, GlobalVariable, Handle, LocalVariable, Module, ScalarKind, ScalarValue,
-    ShaderStage, Span, Statement, StorageClass, StructMember, SwizzleComponent, Type, TypeInner,
-    VectorSize,
-};
+use naga::*;
 
-fn get_vector_size(size: usize) -> VectorSize {
-    match size {
-        2 => VectorSize::Bi,
-        3 => VectorSize::Tri,
-        4 => VectorSize::Quad,
-        // TODO: figure out better solution for this
-        _ => VectorSize::Quad,
-    }
-}
-
-fn get_scalar_value(imm: &Immediate) -> ScalarValue {
-    match imm {
-        Immediate::U32(n) => ScalarValue::Uint(*n as u64),
-        Immediate::U64(n) => ScalarValue::Uint(*n),
-        // TODO: find out what these are
-        Immediate::Relative(_) => todo!(),
-        Immediate::U32Relative(_, _) => todo!(),
-        Immediate::U64Relative(_, _) => todo!(),
-    }
-}
-
-fn get_scalar_width(imm: &Immediate) -> u8 {
-    match imm {
-        Immediate::U32(_) => 4,
-        Immediate::U64(_) => 8,
-        Immediate::Relative(_) => todo!(),
-        Immediate::U32Relative(_, _) => todo!(),
-        Immediate::U64Relative(_, _) => todo!(),
-    }
-}
-
-// TODO: better fails for bad bytecode
-fn get_first_immediate(op: &OperandToken0) -> u32 {
-    match op.get_immediate(0) {
-        Immediate::U32(n) => n,
-        _ => unreachable!(),
-    }
-}
-
-fn get_swizzle_component(c: &ComponentName) -> SwizzleComponent {
-    match c {
-        ComponentName::X => SwizzleComponent::X,
-        ComponentName::Y => SwizzleComponent::Y,
-        ComponentName::Z => SwizzleComponent::Z,
-        ComponentName::W => SwizzleComponent::W,
-    }
-}
-
-fn get_swizzle_components(c: &ComponentSwizzle) -> [SwizzleComponent; 4] {
-    [
-        get_swizzle_component(&c.0),
-        get_swizzle_component(&c.1),
-        get_swizzle_component(&c.2),
-        get_swizzle_component(&c.3),
-    ]
-}
-
-fn get_scalar_kind(ty: &ShaderVariableType) -> ScalarKind {
-    match ty {
-        ShaderVariableType::Int_ => ScalarKind::Sint,
-        ShaderVariableType::UInt => ScalarKind::Uint,
-        ShaderVariableType::UInt8 => ScalarKind::Uint,
-        ShaderVariableType::Float => ScalarKind::Float,
-        ShaderVariableType::Bool => ScalarKind::Bool,
-        _ => todo!(),
-    }
-}
+use utils::{get_first_immediate, get_scalar_value, get_scalar_width, get_vector_size};
 
 pub struct NagaConsumer {
     /// Module populated in [`finalize`].
@@ -105,89 +38,6 @@ impl NagaConsumer {
             temps: vec![],
             outs: vec![],
         }
-    }
-
-    fn get_io_elements(&mut self, sgn: &IOsgnChunk) -> TypeInner {
-        let mut members = Vec::with_capacity(sgn.elements.len());
-        let mut span = 0;
-
-        for elem in &sgn.elements {
-            let kind = match elem.component_type {
-                RegisterComponentType::Float32 => ScalarKind::Float,
-                RegisterComponentType::Int32 => ScalarKind::Sint,
-                RegisterComponentType::Uint32 => ScalarKind::Uint,
-                RegisterComponentType::Unknown => todo!(),
-            };
-
-            let zeros = 8 - elem.component_mask.leading_zeros();
-            let width = zeros * 4;
-            // TODO: matrices? https://docs.rs/naga/latest/naga/enum.Binding.html#method.apply_default_interpolation
-            let inner = if zeros == 1 {
-                TypeInner::Scalar { kind, width: 4 }
-            } else {
-                TypeInner::Vector {
-                    size: get_vector_size(zeros as usize),
-                    kind,
-                    width: 4,
-                }
-            };
-
-            let binding = if let SemanticName::Undefined = elem.semantic_type {
-                // TODO: figure out what I should do with input names
-                let mut binding = Binding::Location {
-                    location: elem.register,
-                    interpolation: None,
-                    sampling: None,
-                };
-                binding.apply_default_interpolation(&inner);
-                binding
-            } else {
-                let semantic = match elem.semantic_type {
-                    SemanticName::Undefined => unreachable!(),
-                    SemanticName::Position => BuiltIn::Position,
-                    SemanticName::ClipDistance => BuiltIn::ClipDistance,
-                    SemanticName::CullDistance => BuiltIn::CullDistance,
-                    SemanticName::RenderTargetArrayIndex => todo!(),
-                    SemanticName::ViewportArrayIndex => BuiltIn::ViewIndex,
-                    SemanticName::VertexId => BuiltIn::VertexIndex,
-                    SemanticName::PrimitiveId => BuiltIn::PrimitiveIndex,
-                    SemanticName::InstanceId => BuiltIn::InstanceIndex,
-                    SemanticName::IsFrontFace => BuiltIn::FrontFacing,
-                    SemanticName::SampleIndex => BuiltIn::SampleIndex,
-                    SemanticName::FinalQuadEdgeTessfactor => todo!(),
-                    SemanticName::FinalQuadInsideTessfactor => todo!(),
-                    SemanticName::FinalTriEdgeTessfactor => todo!(),
-                    SemanticName::FinalTriInsideTessfactor => todo!(),
-                    SemanticName::FinalLineDetailTessfactor => todo!(),
-                    SemanticName::FinalLineDensityTessfactor => todo!(),
-                    SemanticName::Target => todo!(),
-                    SemanticName::Depth => BuiltIn::FragDepth,
-                    SemanticName::Coverage => todo!(),
-                    SemanticName::DepthGreaterEqual => todo!(),
-                    SemanticName::DepthLessEqual => todo!(),
-                };
-                Binding::BuiltIn(semantic)
-            };
-
-            // Type construction is delayed because we need &inner for interpolation and sampling
-            let ty = Type {
-                // TODO: struct name
-                name: None,
-                inner,
-            };
-
-            members.push(StructMember {
-                // TODO: create more sensible type name from fake semantic name
-                name: Some(elem.name.clone()),
-                // TODO: spans
-                ty: self.module.types.insert(ty, Span::UNDEFINED),
-                binding: Some(binding),
-                offset: span,
-            });
-            span += width;
-        }
-
-        TypeInner::Struct { members, span }
     }
 
     /*fn get_swizzle(&mut self, op: &OperandToken0, span: &Span) -> Handle<Expression> {
@@ -305,7 +155,7 @@ impl NagaConsumer {
             ShaderVariableClass::Object => todo!(),
             ShaderVariableClass::Struct => todo!(),
             ShaderVariableClass::InterfaceClass => todo!(),
-            ShaderVariableClass::InterfacePointer => todo!(), 
+            ShaderVariableClass::InterfacePointer => todo!(),
         };
     }*/
 }
@@ -331,10 +181,9 @@ impl Consumer for NagaConsumer {
                 span: 0,
             };
             // I Can't Believe It's Not Struct
-            if let TypeInner::Struct { members, span } = ty {   
+            if let TypeInner::Struct { members, span } = ty {
                 for var in &cb.variables {
                     let name = Some(var.name.to_owned());
-
                 }
             }
         }
@@ -347,76 +196,11 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_isgn(&mut self, isgn: &IOsgnChunk) -> Action {
-        let s = self.get_io_elements(isgn);
-
-        if let TypeInner::Struct { members, .. } = s {
-            for member in members {
-                let arg = FunctionArgument {
-                    name: member.name,
-                    ty: member.ty,
-                    binding: member.binding,
-                };
-                self.function.arguments.push(arg);
-            }
-        }
-
-        Action::Continue
+        io::consume_isgn(self, isgn)
     }
 
     fn consume_osgn(&mut self, osgn: &IOsgnChunk) -> Action {
-        let s = self.get_io_elements(osgn);
-
-        // Skip adding output struct if it's empty
-        if let TypeInner::Struct { members, .. } = &s {
-            if members.is_empty() {
-                return Action::Continue;
-            }
-
-            let len = self.function.expressions.len();
-            for member in members {
-                if let Some(binding) = &member.binding {
-                    let expr = match binding {
-                        Binding::BuiltIn(_) => {
-                            let global = GlobalVariable {
-                                name: member.name.clone(),
-                                class: StorageClass::Private,
-                                // TODO: find out if we need ResourceBindings on global variables
-                                binding: None,
-                                ty: member.ty,
-                                init: None,
-                            };
-                            let global =
-                                self.module.global_variables.append(global, Span::UNDEFINED);
-                            Expression::GlobalVariable(global)
-                        }
-                        Binding::Location { .. } => {
-                            let local = LocalVariable {
-                                name: member.name.clone(),
-                                ty: member.ty,
-                                init: None,
-                            };
-                            let local =
-                                self.function.local_variables.append(local, Span::UNDEFINED);
-                            Expression::LocalVariable(local)
-                        }
-                    };
-                    let handle = self.function.expressions.append(expr, Span::UNDEFINED);
-                    self.outs.push(handle);
-                }
-            }
-            let emit = Statement::Emit(self.function.expressions.range_from(len));
-            self.function.body.push(emit, Span::UNDEFINED);
-        }
-
-        let ty = Type {
-            name: None,
-            inner: s,
-        };
-        let ty = self.module.types.insert(ty, Span::UNDEFINED);
-        let result = FunctionResult { ty, binding: None };
-        self.function.result = Some(result);
-
-        Action::Continue
+        io::consume_osgn(self, osgn)
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
