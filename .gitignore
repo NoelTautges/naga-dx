@@ -1,2 +1,6 @@
+.vs
+.vscode
 /target
+Bins
 Cargo.lock
+obj

@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputPath>.\Bins\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <Choose>
+    <When Condition="'$(Configuration)'=='Debug'">
+      <ItemGroup>
+        <Reference Include=".\Libraries\Debug\ShaderTools.CodeAnalysis.dll" />
+        <Reference Include=".\Libraries\Debug\ShaderTools.CodeAnalysis.Hlsl.dll" />
+        <Reference Include=".\Libraries\Debug\ShaderTools.Utilities.dll" />
+      </ItemGroup>
+    </When>
+    <Otherwise>
+      <ItemGroup>
+        <Reference Include=".\Libraries\Release\ShaderTools.CodeAnalysis.dll" />
+        <Reference Include=".\Libraries\Release\ShaderTools.CodeAnalysis.Hlsl.dll" />
+        <Reference Include=".\Libraries\Release\ShaderTools.Utilities.dll" />
+      </ItemGroup>
+    </Otherwise>
+  </Choose>
+
+  <ItemGroup>
+    <Resource Include="CreateMacroShaders.cs" />
+  </ItemGroup>
+
+  <!-- Thanks to vandre on StackOverflow: https://stackoverflow.com/a/70536593 -->
+  <ItemGroup>
+    <Content Include="CGIncludes\**">
+      <Link>CGIncludes\%(RecursiveDir)\%(Filename)%(Extension)</Link>
+      <TargetPath>CGIncludes\%(RecursiveDir)\%(Filename)%(Extension)</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.1.0" />
+  </ItemGroup>
+
+</Project>
