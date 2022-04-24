@@ -236,6 +236,8 @@ fn main() -> Result<()> {
                     job.shader.ty.get_entry_point(),
                     "/Fo",
                     &job.output_path.to_string_lossy(),
+                    "/Fc",
+                    &job.output_path.with_extension("asm").to_string_lossy(),
                     &job.absolute_input_path.to_string_lossy(),
                 ])
                 .output();
