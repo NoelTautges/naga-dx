@@ -136,7 +136,7 @@ fn get_compiled_path(
 }
 
 /// Returns shader paths and profiles to compile.
-fn find_shaders(shader_dir: &PathBuf, output_dir: &PathBuf) -> Vec<ShaderJob> {
+fn find_shaders(shader_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
     let mut jobs = Vec::new();
 
     for entry in WalkDir::new(&shader_dir).into_iter().filter_map(|e| e.ok()) {
