@@ -9,13 +9,15 @@ use dxbc::dr::*;
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::*;
 
-use utils::{get_first_immediate, get_scalar_value, get_scalar_width, get_vector_size};
+use utils::{get_first_immediate, get_immediate_width, get_scalar_value, get_vector_size};
 
-pub struct NagaConsumer {
+use crate::utils::{get_scalar_kind, get_scalar_width};
+
+pub(crate) struct NagaConsumer {
     /// Module populated in [`finalize`].
-    module: Module,
+    pub module: Module,
     /// Entry point function.
-    function: Function,
+    pub function: Function,
     /// Program type. Vertex, pixel, etc.
     program_ty: ProgramType,
     /// Temporary registers as [`Expression::LocalVariable`]s.
@@ -54,8 +56,11 @@ impl NagaConsumer {
     fn get_variable_expression(&mut self, op: &OperandToken0, span: &Span) -> Handle<Expression> {
         let expr = match op.get_operand_type() {
             OperandType::Input => {
-                let first = get_first_immediate(op);
-                Some(Expression::FunctionArgument(first))
+                let index = get_first_immediate(*op);
+                let base = Expression::FunctionArgument(0);
+                let base = self.function.expressions.append(base, *span);
+                let member = Expression::AccessIndex { base, index };
+                Some(member)
             }
             OperandType::Immediate32 => {
                 let imms = op.get_immediates();
@@ -66,7 +71,7 @@ impl NagaConsumer {
                         // TODO: find out what this is
                         specialization: None,
                         inner: ConstantInner::Scalar {
-                            width: get_scalar_width(first),
+                            width: get_immediate_width(first),
                             value: get_scalar_value(first),
                         },
                     };
@@ -126,11 +131,11 @@ impl NagaConsumer {
 
         let handle = match op.get_operand_type() {
             OperandType::Temp => {
-                let i = get_first_immediate(op);
+                let i = get_first_immediate(*op);
                 Some(self.temps[i as usize])
             }
             OperandType::Output => {
-                let i = get_first_immediate(op);
+                let i = get_first_immediate(*op);
                 Some(self.outs[i as usize])
             }
             _ => todo!(),
@@ -176,16 +181,70 @@ impl Consumer for NagaConsumer {
         self.program_ty = rdef.program_ty;
 
         for cb in &rdef.constant_buffers {
-            let mut ty = TypeInner::Struct {
+            let mut inner = TypeInner::Struct {
                 members: Vec::new(),
                 span: 0,
             };
+
             // I Can't Believe It's Not Struct
-            if let TypeInner::Struct { members, span } = ty {
+            if let TypeInner::Struct { members, span } = &mut inner {
                 for var in &cb.variables {
-                    let name = Some(var.name.to_owned());
+                    let kind = match var.ty.class {
+                        ShaderVariableClass::Scalar
+                        | ShaderVariableClass::Vector
+                        | ShaderVariableClass::MatrixColumns => {
+                            println!("{:#?}", &var);
+                            get_scalar_kind(var.ty.ty)
+                        }
+                        _ => todo!(),
+                    };
+                    let width = get_scalar_width(kind);
+                    let inner = match var.ty.class {
+                        ShaderVariableClass::Scalar => TypeInner::Scalar { kind, width },
+                        ShaderVariableClass::Vector => TypeInner::Vector {
+                            size: get_vector_size(var.ty.columns.into()),
+                            kind,
+                            width,
+                        },
+                        ShaderVariableClass::MatrixColumns => TypeInner::Matrix {
+                            columns: get_vector_size(var.ty.columns.into()),
+                            rows: get_vector_size(var.ty.rows.into()),
+                            width,
+                        },
+                        _ => unreachable!(),
+                    };
+                    let ty = Type {
+                        name: Some(var.name.to_owned()),
+                        inner,
+                    };
+                    let ty = self.module.types.insert(ty, Span::UNDEFINED);
+
+                    let member = StructMember {
+                        name: Some(var.name.to_owned()),
+                        ty,
+                        binding: None,
+                        offset: var.offset,
+                    };
+                    members.push(member);
+                    *span += var.size;
                 }
             }
+
+            let name = cb.name.to_owned();
+            let ty = Type {
+                name: Some(name.clone()),
+                inner,
+            };
+            let ty = self.module.types.insert(ty, Span::UNDEFINED);
+
+            let global = GlobalVariable {
+                name: Some(name),
+                class: StorageClass::Uniform,
+                binding: None,
+                ty,
+                init: None,
+            };
+            self.module.global_variables.append(global, Span::UNDEFINED);
         }
 
         match self.program_ty {
@@ -320,7 +379,11 @@ pub fn parse<T: AsRef<[u8]>>(shader_bytes: T) -> Result<(Module, ModuleInfo), St
     if let Err(e) = parser.parse() {
         return Err(e);
     }
+
     let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-    let info = validator.validate(&consumer.module).unwrap();
+    let info = validator.validate(&consumer.module);
+    // TODO: better error handling
+    let info = info.unwrap();
+
     Ok((consumer.module, info))
 }
