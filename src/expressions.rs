@@ -1,10 +1,20 @@
-use dxbc::dr::{OperandToken0, shex::{OperandType, Immediate}};
-use naga::{Span, Handle, Expression, ConstantInner, Constant, Type, TypeInner, ScalarKind};
+use dxbc::dr::{
+    shex::{Immediate, OperandType},
+    OperandToken0,
+};
+use naga::{Constant, ConstantInner, Expression, Handle, ScalarKind, Span, Type, TypeInner};
 
-use crate::{NagaConsumer, utils::{get_first_immediate, get_scalar_value, get_vector_size, get_immediate_width}};
+use crate::{
+    utils::{get_first_immediate, get_immediate_width, get_scalar_value, get_vector_size},
+    NagaConsumer,
+};
 
 impl NagaConsumer {
-    pub(crate) fn get_variable_expression(&mut self, op: &OperandToken0, span: Span) -> Handle<Expression> {
+    pub(crate) fn get_variable_expression(
+        &mut self,
+        op: &OperandToken0,
+        span: Span,
+    ) -> Handle<Expression> {
         let expr = match op.get_operand_type() {
             OperandType::Input => {
                 let index = get_first_immediate(*op);
@@ -75,11 +85,11 @@ impl NagaConsumer {
             }
             _ => None,
         };
-    
+
         if let Some(e) = expr {
             return self.function.expressions.append(e, span);
         }
-    
+
         let handle = match op.get_operand_type() {
             OperandType::Temp => {
                 let i = get_first_immediate(*op);
@@ -91,7 +101,7 @@ impl NagaConsumer {
             }
             _ => todo!(),
         };
-    
+
         if let Some(h) = handle {
             h
         } else {

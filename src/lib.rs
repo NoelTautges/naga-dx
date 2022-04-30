@@ -65,7 +65,6 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_rdef(&mut self, rdef: &RdefChunk) -> Action {
-        dbg!(rdef);
         self.program_ty = rdef.program_ty;
 
         for cb in &rdef.constant_buffers {
@@ -80,10 +79,7 @@ impl Consumer for NagaConsumer {
                     let kind = match var.ty.class {
                         ShaderVariableClass::Scalar
                         | ShaderVariableClass::Vector
-                        | ShaderVariableClass::MatrixColumns => {
-                            println!("{:#?}", &var);
-                            get_scalar_kind(var.ty.ty)
-                        }
+                        | ShaderVariableClass::MatrixColumns => get_scalar_kind(var.ty.ty),
                         _ => todo!(),
                     };
                     let width = get_scalar_width(kind);

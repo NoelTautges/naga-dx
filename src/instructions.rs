@@ -1,5 +1,5 @@
 use dxbc::dr::*;
-use naga::{Statement, TypeInner, VectorSize, ScalarKind, Span, Type, Expression, LocalVariable};
+use naga::{Expression, LocalVariable, ScalarKind, Span, Statement, Type, TypeInner, VectorSize};
 
 use crate::NagaConsumer;
 
@@ -27,10 +27,10 @@ impl NagaConsumer {
             let var = self.function.expressions.append(var, span);
             self.temps.push(var);
         }
-    
+
         Statement::Emit(self.function.expressions.range_from(len))
     }
-    
+
     pub(crate) fn handle_mov(&mut self, span: Span, mov: &Mov) -> Statement {
         let dst = self.get_variable_expression(&mov.dst, span);
         let src = self.get_variable_expression(&mov.src, span);
@@ -39,7 +39,7 @@ impl NagaConsumer {
             value: src,
         }
     }
-    
+
     pub(crate) fn handle_ret(&mut self, span: Span) -> Statement {
         match &self.function.result {
             Some(r) => {
@@ -58,5 +58,5 @@ impl NagaConsumer {
             }
             None => Statement::Return { value: None },
         }
-    }    
+    }
 }
