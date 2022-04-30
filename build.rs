@@ -1,3 +1,11 @@
+/// This files writes outside OUT_DIR because
+/// 
+/// 1. I want people running non-Windows operating systems to be able to run
+/// the test cases
+/// 
+/// 2. I don't want to recompile all the shaders in case I have to clone this
+/// repository again
+
 use anyhow::{Context, Result};
 use find_winsdk::{SdkInfo, SdkVersion};
 use glob::glob;
@@ -101,6 +109,7 @@ fn get_fxc_path() -> Result<PathBuf> {
 /// If the output file doesn't exist or it exists and has a newer modification time than the input file, returns [None].
 fn get_compiled_path(
     input_path: &Path,
+    input_dir: &Path,
     output_dir: &Path,
     shader: &Shader,
 ) -> Option<(PathBuf, PathBuf)> {
@@ -112,7 +121,7 @@ fn get_compiled_path(
     .into();
 
     let relative_source_path = input_path
-        .strip_prefix(output_dir.parent().unwrap())
+        .strip_prefix(input_dir)
         .unwrap();
     let relative_compiled_path = relative_source_path.with_file_name(&file_name);
     let mut compiled_path = output_dir.to_path_buf();
@@ -136,14 +145,11 @@ fn get_compiled_path(
 }
 
 /// Returns shader paths and profiles to compile.
-fn find_shaders(shader_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
+fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
     let mut jobs = Vec::new();
 
-    for entry in WalkDir::new(&shader_dir).into_iter().filter_map(|e| e.ok()) {
-        let path = match fs::canonicalize(entry.into_path()) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
+    for entry in WalkDir::new(&input_dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.into_path();
         let ext = match path.extension() {
             Some(e) => e,
             None => continue,
@@ -184,7 +190,7 @@ fn find_shaders(shader_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
                     model: *model,
                 };
                 if let Some((relative_input_path, output_path)) =
-                    get_compiled_path(&path, output_dir, &shader)
+                    get_compiled_path(&path, input_dir, output_dir, &shader)
                 {
                     jobs.push(ShaderJob {
                         shader,
@@ -202,14 +208,18 @@ fn find_shaders(shader_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
 
 #[cfg(target_os = "windows")]
 fn main() -> Result<()> {
+    println!("cargo:rerun-if-changed=shaders");
+    
+    // Bail early if the prerequisite tools aren't installed
     let fxc = get_fxc_path()?;
+    
+    let shader_dir = PathBuf::from("shaders");
+    let input_dir = shader_dir.join("source");
+    let output_dir = shader_dir.join("compiled");
 
-    let shader_dir = fs::canonicalize(std::env::current_exe()?.join("../../../shaders"))?;
-    let mut output_dir = shader_dir.clone();
-    output_dir.push("compiled");
     println!("Finding shaders...");
 
-    let mut jobs: Vec<ShaderJob> = find_shaders(&shader_dir, &output_dir);
+    let mut jobs: Vec<ShaderJob> = find_shaders(&input_dir, &output_dir);
 
     println!("Shaders to compile: {}\n", jobs.len());
 
@@ -280,5 +290,6 @@ fn main() -> Result<()> {
         });
 
     println!("{}", "\nFinished!".green());
+
     Ok(())
 }

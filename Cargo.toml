@@ -5,18 +5,17 @@ authors = ["Noel Tautges <noelatautges@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.56"
 dxbc = { path = "../dxbc/dxbc" }
-find-winsdk = "0.2.0"
-glob = "0.3.0"
-indicatif = { version = "0.16.2", features = ["rayon"] }
 naga = { version = "0.8.5", features = ["hlsl-out"] }
-owo-colors = "3.3.0"
-rayon = "1.5.1"
-walkdir = "2.3.2"
 
 [dev-dependencies]
 test-generator = "0.3.0"
 
-[[bin]]
-name = "generate-dxbc"
+[build-dependencies]
+anyhow = "1.0.57"
+find-winsdk = "0.2.0"
+glob = "0.3.0"
+indicatif = { version = "0.16.2", features = ["rayon"] }
+owo-colors = "3.4.0"
+rayon = "1.5.2"
+walkdir = "2.3.2"
