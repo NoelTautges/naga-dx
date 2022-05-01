@@ -32,14 +32,23 @@ public class SimpleIncludeFileSystem : IIncludeFileSystem
 
 public class CreateMacroShaders
 {
+    private const string METADATA = "// SM: 4_1, 5_0";
+    private const string SHADER_DIR = "../../../shaders/source/macros";
+
     public static void Main()
     {
+        Directory.CreateDirectory(SHADER_DIR);
+
         var file = new SourceFile(SourceText.From(File.ReadAllText("CGIncludes/UnityCG.cginc")));
-        var lexer = new HlslLexer(file, includeFileSystem: new SimpleIncludeFileSystem("CGIncludes"));
+        var options = new HlslParseOptions
+        {
+            AdditionalIncludeDirectories = { "" }
+        };
+        var lexer = new HlslLexer(file, options, new SimpleIncludeFileSystem("CGIncludes"));
         var parser = new HlslParser(lexer);
         var tree = new SyntaxTree(
             file,
-            new HlslParseOptions(),
+            options,
             syntaxTree =>
             {
                 var node = (SyntaxNode)parser.ParseCompilationUnit(CancellationToken.None);
@@ -60,8 +69,14 @@ public class CreateMacroShaders
             var func = (FunctionDefinitionSyntax)decl;
 
             var parameters = string.Join(", ", func.ParameterList.Parameters.Select((p, i) => $"{p} : COLOR{i}"));
-            var text = $"{func.ReturnType} {func.Name}({parameters}) : SV_TARGET\n{func.Body}$";
-            Console.Write(text);
+            var text = $@"{METADATA}
+
+#include ""UnityCG.cginc""
+
+{func.ReturnType} PSMain({parameters}) : SV_TARGET
+{func.Body}
+";
+            File.WriteAllText(Path.Combine(SHADER_DIR, $"{func.Name}.hlsl"), text);
         }
     }
 }

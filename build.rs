@@ -50,7 +50,7 @@ impl fmt::Display for ShaderType {
 #[derive(Clone, Copy, Debug)]
 enum ShaderModel {
     V4_1,
-    V5_1,
+    V5_0,
 }
 
 impl fmt::Display for ShaderModel {
@@ -60,7 +60,7 @@ impl fmt::Display for ShaderModel {
             "{}",
             match self {
                 Self::V4_1 => "4_1",
-                Self::V5_1 => "5_1",
+                Self::V5_0 => "5_0",
             }
         )
     }
@@ -157,6 +157,9 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
         if ext.to_string_lossy() != "hlsl" {
             continue;
         }
+        // Unwrap safety: if strip_prefix doesn't return a correct result,
+        // walkdir isn't working right
+        let relative_path = path.as_path().strip_prefix(input_dir).unwrap().to_string_lossy();
 
         let text = match fs::read_to_string(&path) {
             Ok(s) => s,
@@ -175,12 +178,20 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
             types.push(ShaderType::Pixel);
         }
 
+        if types.is_empty() {
+            eprintln!("Skipping shader because no entry point was found: {}", relative_path);
+        }
+
         let mut models = Vec::with_capacity(2);
         if first_line.contains("4_1") {
             models.push(ShaderModel::V4_1);
         }
-        if first_line.contains("5_1") {
-            models.push(ShaderModel::V5_1);
+        if first_line.contains("5_0") {
+            models.push(ShaderModel::V5_0);
+        }
+
+        if types.is_empty() {
+            eprintln!("Skipping shader because no shader models found: {}", relative_path);
         }
 
         for ty in &types {
@@ -224,6 +235,8 @@ fn main() -> Result<()> {
     println!("Shaders to compile: {}\n", jobs.len());
 
     // Create the parent directories of all compiled shaders
+
+    use std::borrow::Cow;
     jobs.retain(|job| {
         if let Some(parent) = job.output_path.parent() {
             if fs::create_dir_all(parent).is_err() {
@@ -240,15 +253,30 @@ fn main() -> Result<()> {
         .for_each(|job| {
             let output = Command::new(&fxc)
                 .args([
-                    "/T",
-                    &format!("{}", job.shader),
-                    "/E",
-                    job.shader.ty.get_entry_point(),
+                    // Syntax: https://docs.microsoft.com/en-us/windows/win32/direct3dtools/dx-graphics-tools-fxc-syntax
+                    // Input file
+                    &job.absolute_input_path.to_string_lossy(),
+                    // Output bytecode
                     "/Fo",
                     &job.output_path.to_string_lossy(),
+                    // Output assembly
                     "/Fc",
                     &job.output_path.with_extension("asm").to_string_lossy(),
-                    &job.absolute_input_path.to_string_lossy(),
+                    // Profile
+                    "/T",
+                    // This bullshit is necessary because if it's first, the
+                    // compiler derefs everything as a Cow, but if it's after,
+                    // I need to do it manually
+                    // TODO: find a better way to do this
+                    &Cow::Owned(format!("{}", job.shader)),
+                    // Entry point
+                    "/E",
+                    job.shader.ty.get_entry_point(),
+                    // Include dir
+                    "/I",
+                    "CreateMacroShaders/CGIncludes",
+                    // Enable backward compatibility
+                    "/Gec",
                 ])
                 .output();
             let output = match output {
