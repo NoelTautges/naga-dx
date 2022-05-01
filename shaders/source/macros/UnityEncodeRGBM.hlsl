@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half4 PSMain(half3 color : COLOR0, float maxRGBM : COLOR1) : SV_TARGET
+half4 PSMain(half3 color : A, float maxRGBM : B) : SV_TARGET
 {
     float kOneOverRGBMMaxRange = 1.0 / maxRGBM;
     const float kMinMultiplier = 2.0 * 1e-2;

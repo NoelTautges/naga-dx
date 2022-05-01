@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float3 PSMain(float4 vertex : COLOR0, float3 normal : COLOR1, int lightCount : COLOR2, bool spotLight : COLOR3) : SV_TARGET
+float3 PSMain(float4 vertex : A, float3 normal : B, int lightCount : C, bool spotLight : D) : SV_TARGET
 {
     float3 viewpos = UnityObjectToViewPos (vertex);
     float3 viewN = normalize (mul ((float3x3)UNITY_MATRIX_IT_MV, normal));

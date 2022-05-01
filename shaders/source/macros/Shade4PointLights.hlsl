@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float3 PSMain(float4 lightPosX : COLOR0, float4 lightPosY : COLOR1, float4 lightPosZ : COLOR2, float3 lightColor0 : COLOR3, float3 lightColor1 : COLOR4, float3 lightColor2 : COLOR5, float3 lightColor3 : COLOR6, float4 lightAttenSq : COLOR7, float3 pos : COLOR8, float3 normal : COLOR9) : SV_TARGET
+float3 PSMain(float4 lightPosX : A, float4 lightPosY : B, float4 lightPosZ : C, float3 lightColor0 : D, float3 lightColor1 : E, float3 lightColor2 : F, float3 lightColor3 : G, float4 lightAttenSq : H, float3 pos : I, float3 normal : J) : SV_TARGET
 {
     // to light vectors
     float4 toLightX = lightPosX - pos.x;

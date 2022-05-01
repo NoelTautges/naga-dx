@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float4 PSMain(float4 pos : COLOR0) : SV_TARGET
+float4 PSMain(float4 pos : A) : SV_TARGET
 {
     #if UNITY_UV_STARTS_AT_TOP
     float scale = -1.0;

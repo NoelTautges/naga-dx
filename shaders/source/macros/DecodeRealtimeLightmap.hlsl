@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half3 PSMain(fixed4 color : COLOR0) : SV_TARGET
+half3 PSMain(fixed4 color : A) : SV_TARGET
 {
     //@TODO: Temporary until Geomerics gives us an API to convert lightmaps to RGBM in gamma space on the enlighten thread before we upload the textures.
 #if defined(UNITY_FORCE_LINEAR_READ_FOR_RGBM)

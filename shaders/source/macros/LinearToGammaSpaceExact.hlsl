@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float PSMain(float value : COLOR0) : SV_TARGET
+float PSMain(float value : A) : SV_TARGET
 {
     if (value <= 0.0F)
         return 0.0F;

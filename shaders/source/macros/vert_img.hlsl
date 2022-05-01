@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-v2f_img PSMain(appdata_img v : COLOR0) : SV_TARGET
+v2f_img PSMain(appdata_img v : A) : SV_TARGET
 {
     v2f_img o;
     UNITY_INITIALIZE_OUTPUT(v2f_img, o);

@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half3 PSMain(half4 data : COLOR0, half4 decodeInstructions : COLOR1) : SV_TARGET
+half3 PSMain(half4 data : A, half4 decodeInstructions : B) : SV_TARGET
 {
     // Take into account texture alpha if decodeInstructions.w is true(the alpha value affects the RGB channels)
     half alpha = decodeInstructions.w * (data.a - 1.0) + 1.0;

@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float2 PSMain(half h : COLOR0, half height : COLOR1, half3 viewDir : COLOR2) : SV_TARGET
+float2 PSMain(half h : A, half height : B, half3 viewDir : C) : SV_TARGET
 {
     h = h * height - height/2.0;
     float3 v = normalize(viewDir);

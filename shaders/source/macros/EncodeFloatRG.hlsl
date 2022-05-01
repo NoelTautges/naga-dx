@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float2 PSMain(float v : COLOR0) : SV_TARGET
+float2 PSMain(float v : A) : SV_TARGET
 {
     float2 kEncodeMul = float2(1.0, 255.0);
     float kEncodeBit = 1.0/255.0;

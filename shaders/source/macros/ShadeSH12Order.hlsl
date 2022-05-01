@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half3 PSMain(half4 normal : COLOR0) : SV_TARGET
+half3 PSMain(half4 normal : A) : SV_TARGET
 {
     // Linear + constant polynomial terms
     half3 res = SHEvalLinearL0L1 (normal);

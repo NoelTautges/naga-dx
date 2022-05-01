@@ -99,7 +99,7 @@
 //
 // Name                 Index   Mask Register SysValue  Format   Used
 // -------------------- ----- ------ -------- -------- ------- ------
-// COLOR                    0   xyzw        0     NONE   float   xyz 
+// A                        0   xyzw        0     NONE   float   xyz 
 //
 //
 // Output signature:

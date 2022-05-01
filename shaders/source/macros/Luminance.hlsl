@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half PSMain(half3 rgb : COLOR0) : SV_TARGET
+half PSMain(half3 rgb : A) : SV_TARGET
 {
     return dot(rgb, unity_ColorSpaceLuminance.rgb);
 }

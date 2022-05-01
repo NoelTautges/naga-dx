@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float4 PSMain(float4 uv : COLOR0, float4 scaleAndOffset : COLOR1) : SV_TARGET
+float4 PSMain(float4 uv : A, float4 scaleAndOffset : B) : SV_TARGET
 {
     return float4(UnityStereoScreenSpaceUVAdjustInternal(uv.xy, scaleAndOffset), UnityStereoScreenSpaceUVAdjustInternal(uv.zw, scaleAndOffset));
 }

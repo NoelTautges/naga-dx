@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float3 PSMain(float4 pos : COLOR0) : SV_TARGET
+float3 PSMain(float4 pos : A) : SV_TARGET
 {
     return UnityObjectToViewPos(pos.xyz);
 }

@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-fixed3 PSMain(fixed4 packednormal : COLOR0) : SV_TARGET
+fixed3 PSMain(fixed4 packednormal : A) : SV_TARGET
 {
     fixed3 normal;
     normal.xy = packednormal.wy * 2 - 1;

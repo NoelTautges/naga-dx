@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half3 PSMain(half4 data : COLOR0, half4 decodeInstructions : COLOR1) : SV_TARGET
+half3 PSMain(half4 data : A, half4 decodeInstructions : B) : SV_TARGET
 {
     // If Linear mode is not supported we can skip exponent part
     #if defined(UNITY_COLORSPACE_GAMMA)

@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float2 PSMain(float3 n : COLOR0) : SV_TARGET
+float2 PSMain(float3 n : A) : SV_TARGET
 {
     float kScale = 1.7777;
     float2 enc;

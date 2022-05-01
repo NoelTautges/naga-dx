@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-fixed4 PSMain(v2f_vertex_lit i : COLOR0, sampler2D mainTex : COLOR1) : SV_TARGET
+fixed4 PSMain(v2f_vertex_lit i : A, sampler2D mainTex : B) : SV_TARGET
 {
     fixed4 texcol = tex2D( mainTex, i.uv );
     fixed4 c;

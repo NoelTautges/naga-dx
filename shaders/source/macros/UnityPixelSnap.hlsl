@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float4 PSMain(float4 pos : COLOR0) : SV_TARGET
+float4 PSMain(float4 pos : A) : SV_TARGET
 {
     float2 hpc = _ScreenParams.xy * 0.5f;
 #if  SHADER_API_PSSL

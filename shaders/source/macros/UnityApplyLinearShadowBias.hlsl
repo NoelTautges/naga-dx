@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float4 PSMain(float4 clipPos : COLOR0) : SV_TARGET
+float4 PSMain(float4 clipPos : A) : SV_TARGET
 {
 #if defined(UNITY_REVERSED_Z)
 

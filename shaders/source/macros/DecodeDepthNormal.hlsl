@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-void PSMain(float4 enc : COLOR0, out float depth : COLOR1, out float3 normal : COLOR2) : SV_TARGET
+void PSMain(float4 enc : A, out float depth : COLOR1, out float3 normal : COLOR2)
 {
     depth = DecodeFloatRG (enc.zw);
     normal = DecodeViewNormalStereo (enc);

@@ -2,5 +2,5 @@
 
 #include "UnityCG.cginc"
 
- PSMain( : COLOR0) : SV_TARGET
+ PSMain( : A) : SV_TARGET
 

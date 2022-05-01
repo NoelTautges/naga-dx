@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-float PSMain(float4 vals : COLOR0) : SV_TARGET
+float PSMain(float4 vals : A) : SV_TARGET
 {
     #ifdef UNITY_USE_RGBA_FOR_POINT_SHADOWS
     return DecodeFloatRGBA (vals);

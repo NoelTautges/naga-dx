@@ -2,7 +2,7 @@
 
 #include "UnityCG.cginc"
 
-half3 PSMain(half3 color : COLOR0, fixed4 dirTex : COLOR1, half3 normalWorld : COLOR2) : SV_TARGET
+half3 PSMain(half3 color : A, fixed4 dirTex : B, half3 normalWorld : C) : SV_TARGET
 {
     // In directional (non-specular) mode Enlighten bakes dominant light direction
     // in a way, that using it for half Lambert and then dividing by a "rebalancing coefficient"
