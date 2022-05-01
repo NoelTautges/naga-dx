@@ -1,4 +1,4 @@
-// SM: 4_1, 5_1
+// SM: 4_1, 5_0
 
 cbuffer Buffer_1
 {
