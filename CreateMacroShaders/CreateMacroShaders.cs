@@ -37,6 +37,7 @@ public class CreateMacroShaders
 
     public static void Main()
     {
+        var letters = Enumerable.Range('A', 26).Select(num => (char)num).ToList();
         Directory.CreateDirectory(SHADER_DIR);
 
         var file = new SourceFile(SourceText.From(File.ReadAllText("CGIncludes/UnityCG.cginc")));
@@ -68,12 +69,19 @@ public class CreateMacroShaders
             }
             var func = (FunctionDefinitionSyntax)decl;
 
-            var parameters = string.Join(", ", func.ParameterList.Parameters.Select((p, i) => $"{p} : COLOR{i}"));
+            if(func.ParameterList.Parameters.Count > letters.Count)
+            {
+                Console.Error.WriteLine("Function has more than 26 parameters!");
+                continue;
+            }
+            // Avoid strange duplicated input semantics error for MultiplyUV by using letters
+            // If in/out parameters conflict in the future, god help me
+            var parameters = string.Join(", ", func.ParameterList.Parameters.Select((param, i) => $"{param} : {(param.ChildNodes.Count < 3 ? letters[i] : $"COLOR{i}")}"));
             var text = $@"{METADATA}
 
 #include ""UnityCG.cginc""
 
-{func.ReturnType} PSMain({parameters}) : SV_TARGET
+{func.ReturnType} PSMain({parameters}){(func.ReturnType.ToString() != "void" ? " : SV_TARGET" : "")}
 {func.Body}
 ";
             File.WriteAllText(Path.Combine(SHADER_DIR, $"{func.Name}.hlsl"), text);
