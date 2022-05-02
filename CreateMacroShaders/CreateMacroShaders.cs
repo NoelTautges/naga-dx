@@ -68,6 +68,11 @@ public class CreateMacroShaders
                 continue;
             }
             var func = (FunctionDefinitionSyntax)decl;
+            // TODO: handle functions in included files
+            if(func.Name.ToString() == "")
+            {
+                continue;
+            }
 
             if(func.ParameterList.Parameters.Count > letters.Count)
             {
