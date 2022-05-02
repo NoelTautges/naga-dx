@@ -41,6 +41,7 @@ public class CreateMacroShaders
         Directory.CreateDirectory(SHADER_DIR);
 
         var file = new SourceFile(SourceText.From(File.ReadAllText("CGIncludes/UnityCG.cginc")));
+        // TODO: add Unity shader preprocessor defines: https://docs.unity3d.com/Manual/SL-BuiltinMacros.html
         var options = new HlslParseOptions
         {
             AdditionalIncludeDirectories = { "" }
