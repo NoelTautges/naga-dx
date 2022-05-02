@@ -1,11 +1,10 @@
 /// This files writes outside OUT_DIR because
-/// 
+///
 /// 1. I want people running non-Windows operating systems to be able to run
 /// the test cases
-/// 
+///
 /// 2. I don't want to recompile all the shaders in case I have to clone this
 /// repository again
-
 use anyhow::{Context, Result};
 use find_winsdk::{SdkInfo, SdkVersion};
 use glob::glob;
@@ -120,9 +119,7 @@ fn get_compiled_path(
     )
     .into();
 
-    let relative_source_path = input_path
-        .strip_prefix(input_dir)
-        .unwrap();
+    let relative_source_path = input_path.strip_prefix(input_dir).unwrap();
     let relative_compiled_path = relative_source_path.with_file_name(&file_name);
     let mut compiled_path = output_dir.to_path_buf();
     compiled_path.push(&relative_compiled_path);
@@ -159,7 +156,11 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
         }
         // Unwrap safety: if strip_prefix doesn't return a correct result,
         // walkdir isn't working right
-        let relative_path = path.as_path().strip_prefix(input_dir).unwrap().to_string_lossy();
+        let relative_path = path
+            .as_path()
+            .strip_prefix(input_dir)
+            .unwrap()
+            .to_string_lossy();
 
         let text = match fs::read_to_string(&path) {
             Ok(s) => s,
@@ -179,7 +180,10 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
         }
 
         if types.is_empty() {
-            eprintln!("Skipping shader because no entry point was found: {}", relative_path);
+            eprintln!(
+                "Skipping shader because no entry point was found: {}",
+                relative_path
+            );
         }
 
         let mut models = Vec::with_capacity(2);
@@ -191,7 +195,10 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
         }
 
         if types.is_empty() {
-            eprintln!("Skipping shader because no shader models found: {}", relative_path);
+            eprintln!(
+                "Skipping shader because no shader models found: {}",
+                relative_path
+            );
         }
 
         for ty in &types {
@@ -220,10 +227,10 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
 #[cfg(target_os = "windows")]
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders");
-    
+
     // Bail early if the prerequisite tools aren't installed
     let fxc = get_fxc_path()?;
-    
+
     let shader_dir = PathBuf::from("shaders");
     let input_dir = shader_dir.join("source");
     let output_dir = shader_dir.join("compiled");
