@@ -1,7 +1,10 @@
 mod expressions;
 mod instructions;
 mod io;
+mod macros;
 mod utils;
+
+pub use macros::MatchMacrosConsumer;
 
 use std::mem::take;
 
