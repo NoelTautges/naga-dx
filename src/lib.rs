@@ -153,6 +153,7 @@ impl Consumer for NagaConsumer {
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
 
         let statement = match instruction.operands {
+            // Declarations
             Operands::DclGlobalFlags(_) => None,
             Operands::DclInput(_) => None,
             Operands::DclInputPs(_) => None,
@@ -166,14 +167,35 @@ impl Consumer for NagaConsumer {
             Operands::DclInputPsSgv(_) => None,
             Operands::DclTemps(dcl) => Some(self.handle_decl_temps(span, &dcl)),
             Operands::DclIndexableTemp(_) => None,
-            Operands::Add(_) => None,
+            // Boolean
             Operands::And(_) => None,
-            Operands::Mul(_) => None,
+            Operands::Ige(_) => None,
+            Operands::Ne(_) => None,
+            // Math
+            Operands::Add(_) => None,
+            Operands::Div(_) => None,
+            Operands::Dp2(_) => None,
+            Operands::Dp3(_) => None,
+            Operands::Dp4(_) => None,
+            Operands::IAdd(_) => None,
             Operands::Mad(_) => None,
+            Operands::Max(_) => None,
+            Operands::Min(_) => None,
+            Operands::Mul(_) => None,
+            Operands::RoundNe(_) => None,
+            Operands::RoundNi(_) => None,
+            Operands::RoundPi(_) => None,
+            Operands::RoundZ(_) => None,
+            Operands::Rsq(_) => None,
+            Operands::Sqrt(_) => None,
+            // Memory
             Operands::Mov(mov) => Some(self.handle_mov(span, &mov)),
+            Operands::MovC(_) => None,
+            // Conversions
             Operands::Itof(_) => None,
             Operands::Utof(_) => None,
             Operands::Ftou(_) => None,
+            // Control flow
             Operands::If(_) => None,
             Operands::Else => None,
             Operands::EndIf => None,
@@ -181,10 +203,12 @@ impl Consumer for NagaConsumer {
             Operands::EndLoop => None,
             Operands::Break => None,
             Operands::BreakC(_) => None,
+            Operands::Ret => Some(self.handle_ret(span)),
+            // Textures
             Operands::Sample(_) => None,
             Operands::SampleL(_) => None,
-            Operands::Ret => Some(self.handle_ret(span)),
-            Operands::Unknown => None,
+            // All others
+            Operands::Unknown => todo!(),
         };
 
         if let Some(s) = statement {

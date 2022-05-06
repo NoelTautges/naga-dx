@@ -9,14 +9,35 @@ static SHADER_DIR: Dir = include_dir!("shaders/compiled");
 /// Smaller representation of [`dxbc`]'s [`Operands`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Instruction {
-    Add,
+    // Boolean
     And,
-    Mul,
+    Ige,
+    Ne,
+    // Math
+    Add,
+    Div,
+    Dp2,
+    Dp3,
+    Dp4,
+    IAdd,
     Mad,
+    Max,
+    Min,
+    Mul,
+    RoundNe,
+    RoundNi,
+    RoundPi,
+    RoundZ,
+    Rsq,
+    Sqrt,
+    // Memory
     Mov,
+    MovC,
+    // Conversions
     Itof,
     Utof,
     Ftou,
+    // Control flow
     If,
     Else,
     EndIf,
@@ -24,8 +45,10 @@ pub enum Instruction {
     EndLoop,
     Break,
     BreakC,
+    // Textures
     Sample,
     SampleL,
+    // All others
     Unknown,
 }
 
@@ -34,6 +57,7 @@ impl Instruction {
     /// should be included in an instruction chain.
     fn try_from(instruction: SparseInstruction) -> Option<Self> {
         match instruction.operands {
+            // Declarations
             Operands::DclGlobalFlags(_) => None,
             Operands::DclInput(_) => None,
             Operands::DclInputPs(_) => None,
@@ -47,14 +71,35 @@ impl Instruction {
             Operands::DclInputPsSgv(_) => None,
             Operands::DclTemps(_) => None,
             Operands::DclIndexableTemp(_) => None,
-            Operands::Add(_) => Some(Instruction::Add),
+            // Boolean
             Operands::And(_) => Some(Instruction::And),
-            Operands::Mul(_) => Some(Instruction::Mul),
+            Operands::Ige(_) => Some(Instruction::Ige),
+            Operands::Ne(_) => Some(Instruction::Ne),
+            // Math
+            Operands::Add(_) => Some(Instruction::Add),
+            Operands::Div(_) => Some(Instruction::Div),
+            Operands::Dp2(_) => Some(Instruction::Dp2),
+            Operands::Dp3(_) => Some(Instruction::Dp3),
+            Operands::Dp4(_) => Some(Instruction::Dp4),
+            Operands::IAdd(_) => Some(Instruction::IAdd),
             Operands::Mad(_) => Some(Instruction::Mad),
+            Operands::Max(_) => Some(Instruction::Max),
+            Operands::Min(_) => Some(Instruction::Min),
+            Operands::MovC(_) => Some(Instruction::MovC),
+            Operands::Mul(_) => Some(Instruction::Mul),
+            Operands::RoundNe(_) => Some(Instruction::RoundNe),
+            Operands::RoundNi(_) => Some(Instruction::RoundNi),
+            Operands::RoundPi(_) => Some(Instruction::RoundPi),
+            Operands::RoundZ(_) => Some(Instruction::RoundZ),
+            Operands::Rsq(_) => Some(Instruction::Rsq),
+            Operands::Sqrt(_) => Some(Instruction::Sqrt),
+            // Memory
             Operands::Mov(_) => Some(Instruction::Mov),
+            // Conversions
             Operands::Itof(_) => Some(Instruction::Itof),
             Operands::Utof(_) => Some(Instruction::Utof),
             Operands::Ftou(_) => Some(Instruction::Ftou),
+            // Control flow
             Operands::If(_) => Some(Instruction::If),
             Operands::Else => Some(Instruction::Else),
             Operands::EndIf => Some(Instruction::EndIf),
@@ -62,9 +107,11 @@ impl Instruction {
             Operands::EndLoop => Some(Instruction::EndLoop),
             Operands::Break => Some(Instruction::Break),
             Operands::BreakC(_) => Some(Instruction::BreakC),
+            Operands::Ret => None,
+            // Textures
             Operands::Sample(_) => Some(Instruction::Sample),
             Operands::SampleL(_) => Some(Instruction::SampleL),
-            Operands::Ret => None,
+            // All others
             Operands::Unknown => Some(Instruction::Unknown),
         }
     }
