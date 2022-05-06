@@ -11,15 +11,22 @@ static SHADER_DIR: Dir = include_dir!("shaders/compiled");
 pub enum Instruction {
     // Boolean
     And,
+    Eq,
+    Ge,
     Ige,
+    Lt,
     Ne,
+    Or,
     // Math
     Add,
     Div,
     Dp2,
     Dp3,
     Dp4,
+    Exp,
+    Frc,
     IAdd,
+    Log,
     Mad,
     Max,
     Min,
@@ -29,6 +36,7 @@ pub enum Instruction {
     RoundPi,
     RoundZ,
     Rsq,
+    SinCos,
     Sqrt,
     // Memory
     Mov,
@@ -73,15 +81,22 @@ impl Instruction {
             Operands::DclIndexableTemp(_) => None,
             // Boolean
             Operands::And(_) => Some(Instruction::And),
+            Operands::Eq(_) => Some(Instruction::Eq),
+            Operands::Ge(_) => Some(Instruction::Ge),
             Operands::Ige(_) => Some(Instruction::Ige),
+            Operands::Lt(_) => Some(Instruction::Lt),
             Operands::Ne(_) => Some(Instruction::Ne),
+            Operands::Or(_) => Some(Instruction::Or),
             // Math
             Operands::Add(_) => Some(Instruction::Add),
             Operands::Div(_) => Some(Instruction::Div),
             Operands::Dp2(_) => Some(Instruction::Dp2),
             Operands::Dp3(_) => Some(Instruction::Dp3),
             Operands::Dp4(_) => Some(Instruction::Dp4),
+            Operands::Exp(_) => Some(Instruction::Exp),
+            Operands::Frc(_) => Some(Instruction::Frc),
             Operands::IAdd(_) => Some(Instruction::IAdd),
+            Operands::Log(_) => Some(Instruction::Log),
             Operands::Mad(_) => Some(Instruction::Mad),
             Operands::Max(_) => Some(Instruction::Max),
             Operands::Min(_) => Some(Instruction::Min),
@@ -92,6 +107,7 @@ impl Instruction {
             Operands::RoundPi(_) => Some(Instruction::RoundPi),
             Operands::RoundZ(_) => Some(Instruction::RoundZ),
             Operands::Rsq(_) => Some(Instruction::Rsq),
+            Operands::SinCos(_) => Some(Instruction::SinCos),
             Operands::Sqrt(_) => Some(Instruction::Sqrt),
             // Memory
             Operands::Mov(_) => Some(Instruction::Mov),
@@ -112,7 +128,7 @@ impl Instruction {
             Operands::Sample(_) => Some(Instruction::Sample),
             Operands::SampleL(_) => Some(Instruction::SampleL),
             // All others
-            Operands::Unknown => Some(Instruction::Unknown),
+            Operands::Unknown(_) => Some(Instruction::Unknown),
         }
     }
 }

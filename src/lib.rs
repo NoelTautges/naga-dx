@@ -169,15 +169,22 @@ impl Consumer for NagaConsumer {
             Operands::DclIndexableTemp(_) => None,
             // Boolean
             Operands::And(_) => None,
+            Operands::Eq(_) => None,
+            Operands::Ge(_) => None,
             Operands::Ige(_) => None,
+            Operands::Lt(_) => None,
             Operands::Ne(_) => None,
+            Operands::Or(_) => None,
             // Math
             Operands::Add(_) => None,
             Operands::Div(_) => None,
             Operands::Dp2(_) => None,
             Operands::Dp3(_) => None,
             Operands::Dp4(_) => None,
+            Operands::Exp(_) => None,
+            Operands::Frc(_) => None,
             Operands::IAdd(_) => None,
+            Operands::Log(_) => None,
             Operands::Mad(_) => None,
             Operands::Max(_) => None,
             Operands::Min(_) => None,
@@ -187,6 +194,7 @@ impl Consumer for NagaConsumer {
             Operands::RoundPi(_) => None,
             Operands::RoundZ(_) => None,
             Operands::Rsq(_) => None,
+            Operands::SinCos(_) => None,
             Operands::Sqrt(_) => None,
             // Memory
             Operands::Mov(mov) => Some(self.handle_mov(span, &mov)),
@@ -208,7 +216,10 @@ impl Consumer for NagaConsumer {
             Operands::Sample(_) => None,
             Operands::SampleL(_) => None,
             // All others
-            Operands::Unknown => todo!(),
+            Operands::Unknown(opcode) => {
+                dbg!(opcode);
+                todo!();
+            },
         };
 
         if let Some(s) = statement {
