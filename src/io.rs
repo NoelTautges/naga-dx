@@ -1,13 +1,13 @@
 use dxbc::{
     binary::Action,
-    dr::{IOsgnChunk, RegisterComponentType, SemanticName},
+    dr::{IOsgnChunk, RdefChunk, RegisterComponentType, SemanticName, ShaderVariableClass},
 };
 use naga::{
     Binding, BuiltIn, Expression, FunctionArgument, FunctionResult, GlobalVariable, Handle,
     ScalarKind, Span, Statement, StorageClass, StructMember, Type, TypeInner,
 };
 
-use crate::utils::get_vector_size;
+use crate::utils::{get_scalar_kind, get_scalar_width, get_vector_size};
 use crate::NagaConsumer;
 
 /// Where [`NagaConsumer::get_io_elements`] is called from.
@@ -17,12 +17,80 @@ enum IoCaller {
 }
 
 impl NagaConsumer {
-    fn get_io_elements(&mut self, sgn: &IOsgnChunk, caller: &IoCaller) -> Option<Handle<Type>> {
-        let mut members = Vec::with_capacity(sgn.elements.len());
+    /// Register all constant buffers found in an [RdefChunk].
+    pub(crate) fn register_constant_buffers(&mut self, chunk: &RdefChunk) {
+        for cb in &chunk.constant_buffers {
+            let mut inner = TypeInner::Struct {
+                members: Vec::new(),
+                span: 0,
+            };
+
+            // I Can't Believe It's Not Struct
+            if let TypeInner::Struct { members, span } = &mut inner {
+                for var in &cb.variables {
+                    let kind = match var.ty.class {
+                        ShaderVariableClass::Scalar
+                        | ShaderVariableClass::Vector
+                        | ShaderVariableClass::MatrixColumns => get_scalar_kind(var.ty.ty),
+                        _ => todo!(),
+                    };
+                    let width = get_scalar_width(kind);
+                    let inner = match var.ty.class {
+                        ShaderVariableClass::Scalar => TypeInner::Scalar { kind, width },
+                        ShaderVariableClass::Vector => TypeInner::Vector {
+                            size: get_vector_size(var.ty.columns.into()),
+                            kind,
+                            width,
+                        },
+                        ShaderVariableClass::MatrixColumns => TypeInner::Matrix {
+                            columns: get_vector_size(var.ty.columns.into()),
+                            rows: get_vector_size(var.ty.rows.into()),
+                            width,
+                        },
+                        _ => unreachable!(),
+                    };
+                    let ty = Type {
+                        name: Some(var.name.to_owned()),
+                        inner,
+                    };
+                    let ty = self.module.types.insert(ty, Span::UNDEFINED);
+
+                    let member = StructMember {
+                        name: Some(var.name.to_owned()),
+                        ty,
+                        binding: None,
+                        offset: var.offset,
+                    };
+                    members.push(member);
+                    *span = var.offset + var.size;
+                }
+            }
+
+            let name = cb.name.to_owned();
+            let ty = Type {
+                name: Some(name.clone()),
+                inner,
+            };
+            let ty = self.module.types.insert(ty, Span::UNDEFINED);
+
+            let global = GlobalVariable {
+                name: Some(name),
+                class: StorageClass::Uniform,
+                binding: None,
+                ty,
+                init: None,
+            };
+            self.module.global_variables.append(global, Span::UNDEFINED);
+        }
+    }
+
+    /// Get a struct filled with inputs/outputs, if there are any.
+    fn get_io_elements(&mut self, chunk: &IOsgnChunk, caller: &IoCaller) -> Option<Handle<Type>> {
+        let mut members = Vec::with_capacity(chunk.elements.len());
         let mut span = 0;
         let mut register = 0;
 
-        for elem in &sgn.elements {
+        for elem in &chunk.elements {
             let kind = match elem.component_type {
                 RegisterComponentType::Float32 => ScalarKind::Float,
                 RegisterComponentType::Int32 => ScalarKind::Sint,

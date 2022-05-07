@@ -13,8 +13,6 @@ use dxbc::dr::*;
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::*;
 
-use crate::utils::*;
-
 pub(crate) struct NagaConsumer {
     /// Module populated in [`finalize`].
     pub module: Module,
@@ -68,72 +66,9 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_rdef(&mut self, rdef: &RdefChunk) -> Action {
+        self.register_constant_buffers(rdef);
+
         self.program_ty = rdef.program_ty;
-
-        for cb in &rdef.constant_buffers {
-            let mut inner = TypeInner::Struct {
-                members: Vec::new(),
-                span: 0,
-            };
-
-            // I Can't Believe It's Not Struct
-            if let TypeInner::Struct { members, span } = &mut inner {
-                for var in &cb.variables {
-                    let kind = match var.ty.class {
-                        ShaderVariableClass::Scalar
-                        | ShaderVariableClass::Vector
-                        | ShaderVariableClass::MatrixColumns => get_scalar_kind(var.ty.ty),
-                        _ => todo!(),
-                    };
-                    let width = get_scalar_width(kind);
-                    let inner = match var.ty.class {
-                        ShaderVariableClass::Scalar => TypeInner::Scalar { kind, width },
-                        ShaderVariableClass::Vector => TypeInner::Vector {
-                            size: get_vector_size(var.ty.columns.into()),
-                            kind,
-                            width,
-                        },
-                        ShaderVariableClass::MatrixColumns => TypeInner::Matrix {
-                            columns: get_vector_size(var.ty.columns.into()),
-                            rows: get_vector_size(var.ty.rows.into()),
-                            width,
-                        },
-                        _ => unreachable!(),
-                    };
-                    let ty = Type {
-                        name: Some(var.name.to_owned()),
-                        inner,
-                    };
-                    let ty = self.module.types.insert(ty, Span::UNDEFINED);
-
-                    let member = StructMember {
-                        name: Some(var.name.to_owned()),
-                        ty,
-                        binding: None,
-                        offset: var.offset,
-                    };
-                    members.push(member);
-                    *span += var.size;
-                }
-            }
-
-            let name = cb.name.to_owned();
-            let ty = Type {
-                name: Some(name.clone()),
-                inner,
-            };
-            let ty = self.module.types.insert(ty, Span::UNDEFINED);
-
-            let global = GlobalVariable {
-                name: Some(name),
-                class: StorageClass::Uniform,
-                binding: None,
-                ty,
-                init: None,
-            };
-            self.module.global_variables.append(global, Span::UNDEFINED);
-        }
-
         match self.program_ty {
             // TODO: fail better
             ProgramType::Geometry | ProgramType::Hull | ProgramType::Domain => unimplemented!(),
@@ -219,7 +154,7 @@ impl Consumer for NagaConsumer {
             Operands::Unknown(opcode) => {
                 dbg!(opcode);
                 todo!();
-            },
+            }
         };
 
         if let Some(s) = statement {
