@@ -41,17 +41,6 @@ impl NagaConsumer {
             outs: vec![],
         }
     }
-
-    /*fn get_swizzle(&mut self, op: &OperandToken0, span: &Span) -> Handle<Expression> {
-        match op.get_component_select_mode() {
-            ComponentSelectMode::Mask => todo!(),
-            ComponentSelectMode::Swizzle => todo!(),
-            ComponentSelectMode::Select1 => {
-                let name = get_swizzle_component(&op.get_component_swizzle().0);
-                [name, name, name, name]
-            }
-        }
-    }*/
 }
 
 impl Default for NagaConsumer {
