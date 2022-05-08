@@ -1,6 +1,6 @@
 use dxbc::dr::shex::Immediate;
-use dxbc::dr::{OperandToken0, ShaderVariableType};
-use naga::{ScalarKind, ScalarValue, VectorSize};
+use dxbc::dr::{OperandToken0, ShaderVariableType, ComponentName, ComponentSwizzle};
+use naga::{ScalarKind, ScalarValue, VectorSize, SwizzleComponent};
 
 /// Get `naga`'s [`VectorSize`] from scalar.
 pub(crate) fn get_vector_size(size: usize) -> VectorSize {
@@ -54,7 +54,6 @@ pub(crate) fn get_first_immediate(op: OperandToken0) -> u32 {
     }
 }
 
-/*
 /// Get `naga`'s [`SwizzleComponent`] from `dxbc`'s [`ComponentName`].
 pub(crate) fn get_swizzle_component(c: ComponentName) -> SwizzleComponent {
     match c {
@@ -74,7 +73,6 @@ pub(crate) fn get_swizzle_components(c: &ComponentSwizzle) -> [SwizzleComponent;
         get_swizzle_component(c.3),
     ]
 }
-*/
 
 /// Get `naga`'s [`ScalarKind`] from `dxbc`'s [`ShaderVariableType`].
 pub(crate) fn get_scalar_kind(ty: ShaderVariableType) -> ScalarKind {
