@@ -224,8 +224,7 @@ fn find_shaders(input_dir: &PathBuf, output_dir: &Path) -> Vec<ShaderJob> {
     jobs
 }
 
-#[cfg(target_os = "windows")]
-fn main() -> Result<()> {
+fn compile_shaders() -> Result<()> {
     println!("cargo:rerun-if-changed=shaders");
 
     // Bail early if the prerequisite tools aren't installed
@@ -327,4 +326,15 @@ fn main() -> Result<()> {
     println!("{}", "\nFinished!".green());
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(compile_shaders()?)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
 }
