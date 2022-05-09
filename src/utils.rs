@@ -1,6 +1,6 @@
 use dxbc::dr::shex::Immediate;
-use dxbc::dr::{OperandToken0, ShaderVariableType, ComponentName, ComponentSwizzle};
-use naga::{ScalarKind, ScalarValue, VectorSize, SwizzleComponent};
+use dxbc::dr::{ComponentName, ComponentSwizzle, OperandToken0, ShaderVariableType};
+use naga::{ScalarKind, ScalarValue, SwizzleComponent, VectorSize};
 
 /// Get `naga`'s [`VectorSize`] from scalar.
 pub(crate) fn get_vector_size(size: usize) -> VectorSize {
