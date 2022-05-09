@@ -159,12 +159,13 @@ impl NagaConsumer {
                 name: None,
                 inner,
             };
+            let ty = self.module.types.insert(ty, Span::UNDEFINED);
 
             members.push(StructMember {
                 // TODO: create more sensible type name from fake semantic name
                 name: Some(elem.name.clone()),
                 // TODO: spans
-                ty: self.module.types.insert(ty, Span::UNDEFINED),
+                ty,
                 binding: Some(binding),
                 offset: span,
             });
