@@ -1,3 +1,5 @@
+#[forbid(missing_docs)]
+
 mod expressions;
 mod instructions;
 mod io;

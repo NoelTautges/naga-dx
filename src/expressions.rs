@@ -19,12 +19,17 @@ use crate::NagaConsumer;
 /// [`Load`][Expression::Load]ed before swizzling. Scalars can't be swizzled
 /// at all.
 enum BroadType {
+    /// Any type that can't be swizzled.
     Scalar,
+    /// Any type that can be swizzled.
     Vector,
+    /// A pointer whose value might be able to be swizzled if
+    /// [`Load`][Expression::Load]ed.
     Pointer,
 }
 
 impl NagaConsumer {
+    /// Resolve [BroadType] corresponding to given [Expression].
     fn get_broad_type(&mut self, expr: Handle<Expression>) -> BroadType {
         let ctx = ResolveContext {
             constants: &self.module.constants,
@@ -57,14 +62,24 @@ impl NagaConsumer {
         op: &OperandToken0,
         span: Span,
     ) -> Handle<Expression> {
-        // If swizzle target is not actually a vector, just return the target
+        // If swizzle target is a scalar, just return the target
+        // If it's a vector, it's fine
+        // If it's a pointer, load it and check again
+        // TODO: this is bad and doesn't deal with matrices
         let broad_ty = self.get_broad_type(expr);
         let vector = match broad_ty {
             BroadType::Scalar => return expr,
             BroadType::Vector => expr,
             BroadType::Pointer => {
                 let load_expr = Expression::Load { pointer: expr };
-                self.function.expressions.append(load_expr, span)
+                let load_expr = self.function.expressions.append(load_expr, span);
+                let loaded_ty = self.get_broad_type(load_expr);
+                match loaded_ty {
+                    BroadType::Scalar => return expr,
+                    BroadType::Vector => expr,
+                    // I'm not dealing with pointers to pointers
+                    BroadType::Pointer => unimplemented!(),
+                }
             }
         };
 
