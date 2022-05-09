@@ -5,6 +5,7 @@ mod macros;
 mod utils;
 
 pub use macros::MatchMacrosConsumer;
+use naga::front::Typifier;
 
 use std::mem::take;
 
@@ -18,6 +19,8 @@ pub(crate) struct NagaConsumer {
     pub module: Module,
     /// Entry point function.
     pub function: Function,
+    /// Helper to get expression types.
+    typifier: Typifier,
     /// Program type. Vertex, pixel, etc.
     program_ty: ProgramType,
     /// Temporary registers as [`Expression::LocalVariable`]s.
@@ -36,6 +39,7 @@ impl NagaConsumer {
         NagaConsumer {
             module,
             function,
+            typifier: Typifier::new(),
             program_ty: ProgramType::Vertex,
             temps: vec![],
             outs: vec![],

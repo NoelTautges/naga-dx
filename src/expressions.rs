@@ -1,16 +1,73 @@
 use dxbc::dr::{
     shex::{Immediate, OperandType},
-    OperandToken0, ComponentSelectMode, ComponentMask, ComponentName,
+    ComponentMask, ComponentName, ComponentSelectMode, OperandToken0,
 };
-use naga::{Constant, ConstantInner, Expression, Handle, ScalarKind, Span, Type, TypeInner, SwizzleComponent, VectorSize, ScalarValue};
+use naga::{
+    proc::ResolveContext, Constant, ConstantInner, Expression, Handle, ScalarKind, ScalarValue,
+    Span, SwizzleComponent, Type, TypeInner, VectorSize,
+};
 
-use crate::{
-    utils::{get_first_immediate, get_immediate_width, get_scalar_value, get_vector_size, get_swizzle_components},
-    NagaConsumer,
+use crate::utils::{
+    get_first_immediate, get_immediate_width, get_scalar_value, get_swizzle_components,
+    get_vector_size,
 };
+use crate::NagaConsumer;
+
+/// Broad type of a type - scalar, vector, or pointer.
+///
+/// Only vectors can be swizzled directly. Pointers need to be
+/// [`Load`][Expression::Load]ed before swizzling. Scalars can't be swizzled
+/// at all.
+enum BroadType {
+    Scalar,
+    Vector,
+    Pointer,
+}
 
 impl NagaConsumer {
-    fn get_swizzle(&mut self, vector: Handle<Expression>, op: &OperandToken0, span: Span) -> Handle<Expression> {
+    fn get_broad_type(&mut self, expr: Handle<Expression>) -> BroadType {
+        let ctx = ResolveContext {
+            constants: &self.module.constants,
+            types: &self.module.types,
+            global_vars: &self.module.global_variables,
+            local_vars: &self.function.local_variables,
+            functions: &self.module.functions,
+            arguments: &self.function.arguments,
+        };
+        // Panic safety: if there's a resolution error, that's a bug on my end
+        // and it deserves to crash
+        self.typifier
+            .grow(expr, &self.function.expressions, &ctx)
+            .unwrap();
+        let ty = self.typifier.get(expr, &self.module.types);
+        if let TypeInner::Pointer { .. } = ty {
+            BroadType::Pointer
+        } else if ty.indexable_length(&self.module).is_ok() {
+            BroadType::Vector
+        } else {
+            BroadType::Scalar
+        }
+    }
+
+    /// [`Expression::Swizzle`] or [`Access`][Expression::Access] the given
+    /// expression, [`Load`][Expression::Load]ing beforehand as necessary.
+    fn get_swizzle(
+        &mut self,
+        expr: Handle<Expression>,
+        op: &OperandToken0,
+        span: Span,
+    ) -> Handle<Expression> {
+        // If swizzle target is not actually a vector, just return the target
+        let broad_ty = self.get_broad_type(expr);
+        let vector = match broad_ty {
+            BroadType::Scalar => return expr,
+            BroadType::Vector => expr,
+            BroadType::Pointer => {
+                let load_expr = Expression::Load { pointer: expr };
+                self.function.expressions.append(load_expr, span)
+            }
+        };
+
         // 1-component swizzles are just accesses: https://github.com/gfx-rs/naga/blob/cf32c2b7f38c985e1c770eeff05a91e0cd15ee04/src/front/glsl/variables.rs#L343
         let mode = op.get_component_select_mode();
         let swizzle = if let ComponentSelectMode::Select1 = mode {
@@ -31,44 +88,46 @@ impl NagaConsumer {
                             value: ScalarValue::Uint(num),
                         },
                     };
-                    let expr = Expression::Constant(self.module.constants.fetch_or_append(constant, span));
+                    let expr =
+                        Expression::Constant(self.module.constants.fetch_or_append(constant, span));
                     self.function.expressions.append(expr, span)
                 },
             }
         } else {
-            let (size, pattern): (VectorSize, [SwizzleComponent; 4]) = match op.get_component_select_mode() {
-                ComponentSelectMode::Mask => {
-                    let mut components = Vec::with_capacity(4);
-                    let mask = op.get_component_mask();
-    
-                    if mask.contains(ComponentMask::COMPONENT_MASK_R) {
-                        components.push(SwizzleComponent::X);
+            let (size, pattern): (VectorSize, [SwizzleComponent; 4]) =
+                match op.get_component_select_mode() {
+                    ComponentSelectMode::Mask => {
+                        let mut components = Vec::with_capacity(4);
+                        let mask = op.get_component_mask();
+
+                        if mask.contains(ComponentMask::COMPONENT_MASK_R) {
+                            components.push(SwizzleComponent::X);
+                        }
+                        if mask.contains(ComponentMask::COMPONENT_MASK_G) {
+                            components.push(SwizzleComponent::Y);
+                        }
+                        if mask.contains(ComponentMask::COMPONENT_MASK_B) {
+                            components.push(SwizzleComponent::Z);
+                        }
+                        if mask.contains(ComponentMask::COMPONENT_MASK_A) {
+                            components.push(SwizzleComponent::W);
+                        }
+
+                        let size = get_vector_size(components.len());
+                        for _ in 0..4 - components.len() {
+                            components.push(SwizzleComponent::X);
+                        }
+
+                        // Panic safety: we explicitly add dummy elements until the
+                        // array is of length 4 so this won't fail
+                        (size, components.try_into().unwrap())
                     }
-                    if mask.contains(ComponentMask::COMPONENT_MASK_G) {
-                        components.push(SwizzleComponent::X);
+                    ComponentSelectMode::Swizzle => {
+                        let swizzle = op.get_component_swizzle();
+                        (VectorSize::Quad, get_swizzle_components(&swizzle))
                     }
-                    if mask.contains(ComponentMask::COMPONENT_MASK_B) {
-                        components.push(SwizzleComponent::X);
-                    }
-                    if mask.contains(ComponentMask::COMPONENT_MASK_A) {
-                        components.push(SwizzleComponent::X);
-                    }
-    
-                    let size = get_vector_size(components.len());
-                    for _ in 0..4 - components.len() {
-                        components.push(SwizzleComponent::X);
-                    }
-    
-                    // Panic safety: we explicitly add dummy elements until the
-                    // array is of length 4 so this won't fail
-                    (size, components.try_into().unwrap())
-                },
-                ComponentSelectMode::Swizzle => {
-                    let swizzle = op.get_component_swizzle();
-                    (VectorSize::Quad, get_swizzle_components(&swizzle))
-                },
-                _ => unreachable!(),
-            };
+                    _ => unreachable!(),
+                };
 
             Expression::Swizzle {
                 size,
@@ -80,6 +139,8 @@ impl NagaConsumer {
         self.function.expressions.append(swizzle, span)
     }
 
+    /// Create an [Expression] corresponding to an operand and return its
+    /// handle.
     pub(crate) fn get_variable_expression(
         &mut self,
         op: &OperandToken0,
@@ -171,7 +232,7 @@ impl NagaConsumer {
                 } else {
                     None
                 }
-            },
+            }
         };
 
         if let Some(h) = handle {
