@@ -331,7 +331,7 @@ fn compile_shaders() -> Result<()> {
 fn main() -> Result<()> {
     #[cfg(target_os = "windows")]
     {
-        Ok(compile_shaders()?)
+        compile_shaders()
     }
     #[cfg(not(target_os = "windows"))]
     {
