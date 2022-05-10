@@ -83,7 +83,6 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
-        dbg!(&instruction);
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
 
         let statement = match instruction.operands {
