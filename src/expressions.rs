@@ -250,7 +250,11 @@ impl NagaConsumer {
         };
 
         if let Some(h) = handle {
-            self.get_swizzle(h, op, span)
+            if let Expression::Constant(_) = self.function.expressions[h] {
+                h
+            } else {
+                self.get_swizzle(h, op, span)
+            }
         } else {
             todo!()
         }
