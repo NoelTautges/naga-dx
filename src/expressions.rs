@@ -1,15 +1,14 @@
-use dxbc::dr::{
-    shex::{Immediate, OperandType},
-    ComponentMask, ComponentName, ComponentSelectMode, OperandToken0,
-};
+use dxbc::dr::shex::{Immediate, OperandType};
+use dxbc::dr::{ComponentMask, ComponentSelectMode, OperandToken0};
+use naga::proc::ResolveContext;
 use naga::{
-    proc::ResolveContext, Constant, ConstantInner, Expression, Handle, ScalarKind, ScalarValue,
-    Span, Statement, SwizzleComponent, Type, TypeInner, VectorSize,
+    Constant, ConstantInner, Expression, Handle, ScalarKind, Span, Statement, SwizzleComponent,
+    Type, TypeInner, VectorSize,
 };
 
 use crate::utils::{
-    get_first_immediate, get_immediate_value, get_immediate_width, get_scalar_value,
-    get_swizzle_components, get_vector_size,
+    get_component_name_index, get_first_immediate, get_immediate_value, get_immediate_width,
+    get_scalar_value, get_swizzle_component_index, get_swizzle_components, get_vector_size,
 };
 use crate::NagaConsumer;
 
@@ -55,8 +54,9 @@ impl NagaConsumer {
         }
     }
 
-    /// [`Expression::Swizzle`] or [`Access`][Expression::Access] the given
-    /// expression, [`Load`][Expression::Load]ing beforehand as necessary.
+    /// [`Expression::Swizzle`] or [`AccessIndex`][Expression::AccessIndex] the
+    /// given expression, [`Load`][Expression::Load]ing beforehand as
+    /// necessary.
     // TODO: pare down swizzles to human-like forms
     fn get_swizzle(
         &mut self,
@@ -88,27 +88,9 @@ impl NagaConsumer {
         // 1-component swizzles are just accesses: https://github.com/gfx-rs/naga/blob/cf32c2b7f38c985e1c770eeff05a91e0cd15ee04/src/front/glsl/variables.rs#L343
         let mode = op.get_component_select_mode();
         let swizzle = if let ComponentSelectMode::Select1 = mode {
-            Expression::Access {
+            Expression::AccessIndex {
                 base: vector,
-                index: {
-                    let num = match op.get_component_swizzle().0 {
-                        ComponentName::X => 0,
-                        ComponentName::Y => 1,
-                        ComponentName::Z => 2,
-                        ComponentName::W => 3,
-                    };
-                    let constant = Constant {
-                        name: None,
-                        specialization: None,
-                        inner: ConstantInner::Scalar {
-                            width: 4,
-                            value: ScalarValue::Uint(num),
-                        },
-                    };
-                    let expr =
-                        Expression::Constant(self.module.constants.fetch_or_append(constant, span));
-                    self.function.expressions.append(expr, span)
-                },
+                index: get_component_name_index(op.get_component_swizzle().0),
             }
         } else {
             let (size, pattern): (VectorSize, [SwizzleComponent; 4]) =
@@ -116,6 +98,8 @@ impl NagaConsumer {
                     ComponentSelectMode::Mask => {
                         let mut components = Vec::with_capacity(4);
                         let mask = op.get_component_mask();
+
+                        if mask.bits().count_ones() == 1 {}
 
                         if mask.contains(ComponentMask::COMPONENT_MASK_R) {
                             components.push(SwizzleComponent::X);
@@ -130,7 +114,15 @@ impl NagaConsumer {
                             components.push(SwizzleComponent::W);
                         }
 
-                        if components.len() == 1 {}
+                        if components.len() == 1 {
+                            let expr = Expression::AccessIndex {
+                                base: vector,
+                                // Panic safety: components.len() == 1
+                                index: get_swizzle_component_index(components.first().unwrap()),
+                            };
+                            return self.function.expressions.append(expr, span);
+                        }
+
                         let size = get_vector_size(components.len());
                         for _ in 0..4 - components.len() {
                             components.push(SwizzleComponent::X);

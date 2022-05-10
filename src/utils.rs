@@ -86,6 +86,26 @@ pub(crate) fn get_swizzle_components(c: &ComponentSwizzle) -> [SwizzleComponent;
     ]
 }
 
+/// Get [`ComponentName`] index.
+pub(crate) fn get_component_name_index(c: ComponentName) -> u32 {
+    match c {
+        ComponentName::X => 0,
+        ComponentName::Y => 1,
+        ComponentName::Z => 2,
+        ComponentName::W => 3,
+    }
+}
+
+/// Get [`SwizzleComponent`] index.
+pub(crate) fn get_swizzle_component_index(c: &SwizzleComponent) -> u32 {
+    match c {
+        SwizzleComponent::X => 0,
+        SwizzleComponent::Y => 1,
+        SwizzleComponent::Z => 2,
+        SwizzleComponent::W => 3,
+    }
+}
+
 /// Get `naga`'s [`ScalarKind`] from `dxbc`'s [`ShaderVariableType`].
 pub(crate) fn get_scalar_kind(ty: ShaderVariableType) -> ScalarKind {
     match ty {
