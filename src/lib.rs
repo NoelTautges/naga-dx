@@ -1,5 +1,4 @@
 #[forbid(missing_docs)]
-
 mod expressions;
 mod instructions;
 mod io;
@@ -17,7 +16,7 @@ use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use naga::*;
 
 pub(crate) struct NagaConsumer {
-    /// Module populated in [`finalize`].
+    /// Module populated in [`finalize`][NagaConsumer::finalize].
     pub module: Module,
     /// Entry point function.
     pub function: Function,
@@ -25,9 +24,12 @@ pub(crate) struct NagaConsumer {
     typifier: Typifier,
     /// Program type. Vertex, pixel, etc.
     program_ty: ProgramType,
-    /// Temporary registers as [`Expression::LocalVariable`]s.
+    /// Pointers to constant buffers as [`Expression::AccessIndex`]es of
+    /// [`Expression::GlobalVariable`]s.
+    constant_buffers: Vec<Vec<Handle<Expression>>>,
+    /// Pointers to temporary registers as [`Expression::LocalVariable`]s.
     temps: Vec<Handle<Expression>>,
-    /// Output struct members as [`Expression`]s.
+    /// Pointers to output struct members as [`Expression::GlobalVariable`]s.
     outs: Vec<Handle<Expression>>,
 }
 
@@ -43,8 +45,9 @@ impl NagaConsumer {
             function,
             typifier: Typifier::new(),
             program_ty: ProgramType::Vertex,
-            temps: vec![],
-            outs: vec![],
+            constant_buffers: Vec::new(),
+            temps: Vec::new(),
+            outs: Vec::new(),
         }
     }
 }
@@ -80,6 +83,7 @@ impl Consumer for NagaConsumer {
     }
 
     fn consume_instruction(&mut self, offset: u32, instruction: SparseInstruction) -> Action {
+        dbg!(&instruction);
         let span = Span::new(offset, offset + instruction.opcode.get_instruction_length());
 
         let statement = match instruction.operands {
@@ -95,7 +99,7 @@ impl Consumer for NagaConsumer {
             Operands::DclOutputSgv(_) => None,
             Operands::DclInputPsSiv(_) => None,
             Operands::DclInputPsSgv(_) => None,
-            Operands::DclTemps(dcl) => Some(self.handle_decl_temps(span, &dcl)),
+            Operands::DclTemps(dcl) => self.handle_decl_temps(span, &dcl),
             Operands::DclIndexableTemp(_) => None,
             // Boolean
             Operands::And(_) => None,
@@ -106,7 +110,7 @@ impl Consumer for NagaConsumer {
             Operands::Ne(_) => None,
             Operands::Or(_) => None,
             // Math
-            Operands::Add(_) => None,
+            Operands::Add(add) => self.handle_add(span, &add),
             Operands::Div(_) => None,
             Operands::Dp2(_) => None,
             Operands::Dp3(_) => None,
@@ -127,7 +131,7 @@ impl Consumer for NagaConsumer {
             Operands::SinCos(_) => None,
             Operands::Sqrt(_) => None,
             // Memory
-            Operands::Mov(mov) => Some(self.handle_mov(span, &mov)),
+            Operands::Mov(mov) => self.handle_mov(span, &mov),
             Operands::MovC(_) => None,
             // Conversions
             Operands::Itof(_) => None,
@@ -141,7 +145,7 @@ impl Consumer for NagaConsumer {
             Operands::EndLoop => None,
             Operands::Break => None,
             Operands::BreakC(_) => None,
-            Operands::Ret => Some(self.handle_ret(span)),
+            Operands::Ret => self.handle_ret(span),
             // Textures
             Operands::Sample(_) => None,
             Operands::SampleL(_) => None,

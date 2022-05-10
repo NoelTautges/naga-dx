@@ -4,12 +4,12 @@ use dxbc::dr::{
 };
 use naga::{
     proc::ResolveContext, Constant, ConstantInner, Expression, Handle, ScalarKind, ScalarValue,
-    Span, SwizzleComponent, Type, TypeInner, VectorSize,
+    Span, Statement, SwizzleComponent, Type, TypeInner, VectorSize,
 };
 
 use crate::utils::{
-    get_first_immediate, get_immediate_width, get_scalar_value, get_swizzle_components,
-    get_vector_size,
+    get_first_immediate, get_immediate_value, get_immediate_width, get_scalar_value,
+    get_swizzle_components, get_vector_size,
 };
 use crate::NagaConsumer;
 
@@ -45,6 +45,7 @@ impl NagaConsumer {
             .grow(expr, &self.function.expressions, &ctx)
             .unwrap();
         let ty = self.typifier.get(expr, &self.module.types);
+
         if let TypeInner::Pointer { .. } = ty {
             BroadType::Pointer
         } else if ty.indexable_length(&self.module).is_ok() {
@@ -56,6 +57,7 @@ impl NagaConsumer {
 
     /// [`Expression::Swizzle`] or [`Access`][Expression::Access] the given
     /// expression, [`Load`][Expression::Load]ing beforehand as necessary.
+    // TODO: pare down swizzles to human-like forms
     fn get_swizzle(
         &mut self,
         expr: Handle<Expression>,
@@ -75,8 +77,8 @@ impl NagaConsumer {
                 let load_expr = self.function.expressions.append(load_expr, span);
                 let loaded_ty = self.get_broad_type(load_expr);
                 match loaded_ty {
-                    BroadType::Scalar => return expr,
-                    BroadType::Vector => expr,
+                    BroadType::Scalar => return load_expr,
+                    BroadType::Vector => load_expr,
                     // I'm not dealing with pointers to pointers
                     BroadType::Pointer => unimplemented!(),
                 }
@@ -99,7 +101,7 @@ impl NagaConsumer {
                         name: None,
                         specialization: None,
                         inner: ConstantInner::Scalar {
-                            width: 1,
+                            width: 4,
                             value: ScalarValue::Uint(num),
                         },
                     };
@@ -128,6 +130,7 @@ impl NagaConsumer {
                             components.push(SwizzleComponent::W);
                         }
 
+                        if components.len() == 1 {}
                         let size = get_vector_size(components.len());
                         for _ in 0..4 - components.len() {
                             components.push(SwizzleComponent::X);
@@ -156,12 +159,15 @@ impl NagaConsumer {
 
     /// Create an [Expression] corresponding to an operand and return its
     /// handle.
-    pub(crate) fn get_variable_expression(
-        &mut self,
-        op: &OperandToken0,
-        span: Span,
-    ) -> Handle<Expression> {
+    fn get_variable_expression(&mut self, op: &OperandToken0, span: Span) -> Handle<Expression> {
         let handle = match op.get_operand_type() {
+            OperandType::ConstantBuffer => {
+                let imms = op.get_immediates();
+                let cb_index = get_immediate_value(&imms[0]) as usize;
+                let var_index = get_immediate_value(&imms[1]) as usize;
+                let expr = self.constant_buffers[cb_index][var_index];
+                Some(expr)
+            }
             OperandType::Temp => {
                 let i = get_first_immediate(*op);
                 Some(self.temps[i as usize])
@@ -172,6 +178,7 @@ impl NagaConsumer {
             }
             _ => {
                 let expr = match op.get_operand_type() {
+                    // TODO: collect inputs into ins
                     OperandType::Input => {
                         let index = get_first_immediate(*op);
                         let base = Expression::FunctionArgument(0);
@@ -254,6 +261,30 @@ impl NagaConsumer {
             self.get_swizzle(h, op, span)
         } else {
             todo!()
+        }
+    }
+
+    pub(crate) fn get_dst_variable_statement(
+        &mut self,
+        op: &OperandToken0,
+        span: Span,
+        value: Handle<Expression>,
+    ) -> Statement {
+        let pointer = self.get_variable_expression(op, span);
+        Statement::Store { pointer, value }
+    }
+
+    pub(crate) fn get_src_variable_expression(
+        &mut self,
+        op: &OperandToken0,
+        span: Span,
+    ) -> Handle<Expression> {
+        let var_expr = self.get_variable_expression(op, span);
+        if let BroadType::Pointer = self.get_broad_type(var_expr) {
+            let load_expr = Expression::Load { pointer: var_expr };
+            self.function.expressions.append(load_expr, span)
+        } else {
+            var_expr
         }
     }
 }

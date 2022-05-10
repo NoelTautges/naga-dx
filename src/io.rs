@@ -80,7 +80,23 @@ impl NagaConsumer {
                 ty,
                 init: None,
             };
-            self.module.global_variables.append(global, Span::UNDEFINED);
+            let global = self.module.global_variables.append(global, Span::UNDEFINED);
+            let global = Expression::GlobalVariable(global);
+            let global = self.function.expressions.append(global, Span::UNDEFINED);
+
+            let members = cb
+                .variables
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    let expr = Expression::AccessIndex {
+                        base: global,
+                        index: i as u32,
+                    };
+                    self.function.expressions.append(expr, Span::UNDEFINED)
+                })
+                .collect();
+            self.constant_buffers.push(members);
         }
     }
 

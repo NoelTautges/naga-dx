@@ -43,6 +43,18 @@ pub(crate) fn get_immediate_width(imm: &Immediate) -> u8 {
     }
 }
 
+/// Get value of [Immediate].
+// TODO: figure out the rest of these values and if u64 is best
+pub(crate) fn get_immediate_value(imm: &Immediate) -> u64 {
+    match imm {
+        Immediate::U32(n) => *n as u64,
+        Immediate::U64(n) => *n,
+        Immediate::Relative(_) => todo!(),
+        Immediate::U32Relative(_, _) => todo!(),
+        Immediate::U64Relative(_, _) => todo!(),
+    }
+}
+
 /// Get first immediate for operand tokens where there's guaranteed to be a first immediate.
 ///
 /// Panics if there is no first immediate.

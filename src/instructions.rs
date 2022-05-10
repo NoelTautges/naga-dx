@@ -1,10 +1,14 @@
 use dxbc::dr::*;
-use naga::{Expression, LocalVariable, ScalarKind, Span, Statement, Type, TypeInner, VectorSize};
+use naga::{
+    BinaryOperator, Expression, LocalVariable, ScalarKind, Span, Statement, Type, TypeInner,
+    VectorSize,
+};
 
 use crate::NagaConsumer;
 
+// TODO: use trait to implement these on instructions themselves
 impl NagaConsumer {
-    pub(crate) fn handle_decl_temps(&mut self, span: Span, dcl: &DclTemps) -> Statement {
+    pub(crate) fn handle_decl_temps(&mut self, span: Span, dcl: &DclTemps) -> Option<Statement> {
         let four_floats = Type {
             name: None,
             inner: TypeInner::Vector {
@@ -28,20 +32,30 @@ impl NagaConsumer {
             self.temps.push(var);
         }
 
-        Statement::Emit(self.function.expressions.range_from(len))
+        Some(Statement::Emit(self.function.expressions.range_from(len)))
     }
 
-    pub(crate) fn handle_mov(&mut self, span: Span, mov: &Mov) -> Statement {
-        let dst = self.get_variable_expression(&mov.dst, span);
-        let src = self.get_variable_expression(&mov.src, span);
-        Statement::Store {
-            pointer: dst,
-            value: src,
-        }
+    pub(crate) fn handle_add(&mut self, span: Span, add: &Add) -> Option<Statement> {
+        let a = self.get_src_variable_expression(&add.a, span);
+        let b = self.get_src_variable_expression(&add.b, span);
+
+        let expr = Expression::Binary {
+            op: BinaryOperator::Add,
+            left: a,
+            right: b,
+        };
+        let expr = self.function.expressions.append(expr, span);
+
+        Some(self.get_dst_variable_statement(&add.dst, span, expr))
     }
 
-    pub(crate) fn handle_ret(&mut self, span: Span) -> Statement {
-        match &self.function.result {
+    pub(crate) fn handle_mov(&mut self, span: Span, mov: &Mov) -> Option<Statement> {
+        let src = self.get_src_variable_expression(&mov.src, span);
+        Some(self.get_dst_variable_statement(&mov.dst, span, src))
+    }
+
+    pub(crate) fn handle_ret(&mut self, span: Span) -> Option<Statement> {
+        Some(match &self.function.result {
             Some(r) => {
                 if let TypeInner::Struct { .. } = &self.module.types[r.ty].inner {
                     let compose = Expression::Compose {
@@ -57,6 +71,6 @@ impl NagaConsumer {
                 }
             }
             None => Statement::Return { value: None },
-        }
+        })
     }
 }
